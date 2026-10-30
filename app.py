@@ -395,7 +395,13 @@ else:
                     timeout=300,
                 )
                 finish.raise_for_status()
-                file_info = finish.json().get("file", finish.json())
+                finish_data = finish.json()
+                if isinstance(finish_data, dict):
+                    file_info = finish_data.get("file", finish_data)
+                else:
+                    raise RuntimeError("Gemini upload response అర్థం కాలేదు. మళ్లీ ప్రయత్నించు.")
+                if not isinstance(file_info, dict):
+                    raise RuntimeError("Gemini file response సరైన formatలో లేదు.")
                 file_uri = file_info.get("uri")
                 file_state = file_info.get("state", "PROCESSING")
                 if not file_uri:
@@ -430,16 +436,37 @@ else:
                 )
                 gen.raise_for_status()
                 gen_data = gen.json()
-                generated_text = "".join(
-                    part.get("text", "")
-                    for cand in gen_data.get("candidates", [])
-                    for part in cand.get("content", {}).get("parts", [])
-                ).strip()
+                if not isinstance(gen_data, dict):
+                    raise RuntimeError("Gemini response format తప్పుగా వచ్చింది. మళ్లీ Generate చేయి.")
+                candidates = gen_data.get("candidates", [])
+                text_parts = []
+                for candidate in candidates if isinstance(candidates, list) else []:
+                    if not isinstance(candidate, dict):
+                        continue
+                    content_obj = candidate.get("content", {})
+                    if not isinstance(content_obj, dict):
+                        continue
+                    parts = content_obj.get("parts", [])
+                    for part in parts if isinstance(parts, list) else []:
+                        if isinstance(part, dict) and isinstance(part.get("text"), str):
+                            text_parts.append(part["text"])
+                generated_text = "\\n".join(text_parts).strip()
+                if not generated_text:
+                    raise RuntimeError("Gemini నుంచి వివరాలు రాలేదు. API response: " + json.dumps(gen_data, ensure_ascii=False)[:700])
+                generated_text = generated_text.replace("```json", "").replace("```", "").strip()
                 metadata = json.loads(generated_text)
+                if not isinstance(metadata, dict):
+                    raise RuntimeError("Gemini metadata object బదులుగా వేరే format ఇచ్చింది. మళ్లీ Generate చేయి.")
+                for field in ["title", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption"]:
+                    metadata.setdefault(field, [] if field in ["tags", "hashtags"] else "")
+                if not isinstance(metadata.get("tags"), list):
+                    metadata["tags"] = [str(metadata["tags"])]
+                if not isinstance(metadata.get("hashtags"), list):
+                    metadata["hashtags"] = [str(metadata["hashtags"])]
                 st.session_state["ai_video_metadata"] = metadata
-                st.session_state["ai_video_description"] = metadata.get("description", "")
-                st.session_state["ai_video_title"] = metadata.get("title", "")[:100]
-                st.session_state["ai_video_tags"] = ", ".join(metadata.get("tags", []))
+                st.session_state["ai_video_description"] = str(metadata.get("description", ""))
+                st.session_state["ai_video_title"] = str(metadata.get("title", ""))[:100]
+                st.session_state["ai_video_tags"] = ", ".join(str(tag) for tag in metadata.get("tags", []))
                 st.success("వీడియో చూసి నీకు కావాల్సిన వివరాలు Gemini సిద్ధం చేసింది. Upload ముందు Review చేయి.")
             except Exception as exc:
                 st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
@@ -447,6 +474,9 @@ else:
         st.warning("Gemini API key లేదు. Streamlit Secretsలో GEMINI_API_KEY తనిఖీ చేయి.")
 
     metadata = st.session_state.get("ai_video_metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+        st.session_state["ai_video_metadata"] = {}
     if metadata:
         st.markdown("#### ✨ Gemini తయారు చేసిన వివరాలు — Review చేయి")
         st.text_input("YouTube Title", key="ai_video_title", max_chars=100)
