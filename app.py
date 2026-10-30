@@ -162,7 +162,7 @@ else:
                     channel_title = snippet.get("title") or channel_title
                 recent_context = ""
                 if "rows" in locals() and rows:
-                    recent_context = "\\n".join(
+                    recent_context = "\n".join(
                         f"- {r.get('Title','')} ({r.get('Views',0)} views)"
                         for r in rows[:8]
                     )
@@ -203,7 +203,7 @@ Return clean headings and ready-to-use output.
                         st.error(f"Gemini API error ({response.status_code}): {detail}")
                     else:
                         payload = response.json()
-                        generated = "\\n".join(
+                        generated = "\n".join(
                             part.get("text", "")
                             for candidate in payload.get("candidates", [])
                             for part in candidate.get("content", {}).get("parts", [])
