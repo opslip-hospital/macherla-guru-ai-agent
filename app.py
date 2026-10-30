@@ -191,26 +191,31 @@ import hashlib
 import hmac
 import secrets
 
-def make_oauth_state():
+def make_oauth_state(code_verifier):
     nonce = secrets.token_urlsafe(24)
+    payload = f"{nonce}.{code_verifier}"
     secret = oauth_config["web"]["client_secret"].encode("utf-8")
-    signature = hmac.new(secret, nonce.encode("utf-8"), hashlib.sha256).hexdigest()
-    return f"{nonce}.{signature}"
+    signature = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{payload}.{signature}"
 
 def verify_oauth_state(state):
     try:
-        nonce, signature = state.rsplit(".", 1)
+        nonce, code_verifier, signature = state.rsplit(".", 2)
+        payload = f"{nonce}.{code_verifier}"
         secret = oauth_config["web"]["client_secret"].encode("utf-8")
-        expected = hmac.new(secret, nonce.encode("utf-8"), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(signature, expected)
+        expected = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(signature, expected):
+            return code_verifier
     except Exception:
-        return False
+        pass
+    return None
 
 # Complete the OAuth callback after the owner returns from Google.
 if oauth_config and st.query_params.get("code"):
     try:
         returned_state = st.query_params.get("state", "")
-        if not verify_oauth_state(returned_state):
+        saved_code_verifier = verify_oauth_state(returned_state)
+        if not saved_code_verifier:
             raise ValueError("OAuth state validation failed. Please connect YouTube again.")
         from google_auth_oauthlib.flow import Flow
         callback_flow = Flow.from_client_config(
@@ -219,6 +224,9 @@ if oauth_config and st.query_params.get("code"):
             state=returned_state,
             redirect_uri=oauth_redirect_uri,
         )
+        # The PKCE verifier is carried inside the signed state so it survives
+        # Google's redirect even when Streamlit starts a fresh session.
+        callback_flow.code_verifier = saved_code_verifier
         callback_flow.fetch_token(code=st.query_params.get("code"))
         st.session_state["youtube_owner_token"] = callback_flow.credentials.to_json()
         st.query_params.clear()
@@ -245,7 +253,8 @@ elif not owner_creds:
     if st.button("🔐 Connect my YouTube channel", type="primary"):
         try:
             flow = Flow.from_client_config(oauth_config, scopes=YT_SCOPES, redirect_uri=oauth_redirect_uri)
-            signed_state = make_oauth_state()
+            flow.code_verifier = secrets.token_urlsafe(64)
+            signed_state = make_oauth_state(flow.code_verifier)
             auth_url, _ = flow.authorization_url(
                 access_type="offline",
                 include_granted_scopes="true",
