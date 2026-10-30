@@ -417,6 +417,484 @@ else:
     youtube_owner = build("youtube", "v3", credentials=owner_creds, cache_discovery=False)
     analytics_owner = build("youtubeAnalytics", "v2", credentials=owner_creds, cache_discovery=False)
 
+
+
+    st.subheader("🎬 ఒక్క వీడియో ఇవ్వు — మిగతావన్నీ Gemini సిద్ధం చేస్తుంది")
+    uploaded_video = st.file_uploader("నీ వీడియో ఎంచుకోండి", type=["mp4", "mov", "avi", "webm"], key="source_video_for_ai")
+    if uploaded_video and GEMINI_KEY:
+        if st.button("✨ ఈ వీడియో చూసి Title, SEO, Tags, Captions తయారు చేయి", type="primary"):
+            try:
+                video_bytes = uploaded_video.getvalue()
+                mime_type = uploaded_video.type or "video/mp4"
+                start = requests.post(
+                    "https://generativelanguage.googleapis.com/upload/v1beta/files",
+                    headers={
+                        "x-goog-api-key": GEMINI_KEY,
+                        "X-Goog-Upload-Protocol": "resumable",
+                        "X-Goog-Upload-Command": "start",
+                        "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
+                        "X-Goog-Upload-Header-Content-Type": mime_type,
+                        "Content-Type": "application/json",
+                    },
+                    json={"file": {"display_name": uploaded_video.name}},
+                    timeout=60,
+                )
+                start.raise_for_status()
+                upload_url = start.headers.get("X-Goog-Upload-URL")
+                if not upload_url:
+                    raise RuntimeError("Gemini video upload URL రాలేదు.")
+                finish = requests.post(
+                    upload_url,
+                    headers={
+                        "X-Goog-Upload-Offset": "0",
+                        "X-Goog-Upload-Command": "upload, finalize",
+                        "Content-Length": str(len(video_bytes)),
+                    },
+                    data=video_bytes,
+                    timeout=300,
+                )
+                finish.raise_for_status()
+                finish_data = finish.json()
+                if isinstance(finish_data, dict):
+                    file_info = finish_data.get("file", finish_data)
+                else:
+                    raise RuntimeError("Gemini upload response అర్థం కాలేదు. మళ్లీ ప్రయత్నించు.")
+                if not isinstance(file_info, dict):
+                    raise RuntimeError("Gemini file response సరైన formatలో లేదు.")
+                file_uri = file_info.get("uri")
+                file_state = file_info.get("state", "PROCESSING")
+                if not file_uri:
+                    raise RuntimeError("Gemini వీడియో ఫైల్ URI రాలేదు.")
+                import time
+                for _ in range(30):
+                    if file_state == "ACTIVE":
+                        break
+                    time.sleep(2)
+                    check = requests.get(
+                        "https://generativelanguage.googleapis.com/v1beta/" + file_info.get("name", ""),
+                        headers={"x-goog-api-key": GEMINI_KEY},
+                        timeout=30,
+                    )
+                    check.raise_for_status()
+                    file_info = check.json()
+                    file_state = file_info.get("state", "")
+                if file_state != "ACTIVE":
+                    raise RuntimeError("Gemini వీడియోను ఇంకా ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
+                ai_prompt = """Watch the supplied video carefully and create ready-to-use YouTube publishing metadata for Macherla Guru, a Telugu AI entertainment channel. Infer the actual subject, characters, actions, spoken language and mood from the video. Do not invent events, people, dialogue or claims not visible/audible. Return ONLY valid JSON with keys: title (catchy Telugu title, max 100 chars), description (natural Telugu description with a short CTA), tags (array of 12-18 relevant tags), hashtags (array of exactly 5 relevant hashtags), thumbnail_prompt (detailed 9:16 or 16:9 choice based on video, cinematic thumbnail prompt showing only actual video characters, no text), instagram_caption (curiosity hook plus exactly 5 hashtags), youtube_caption (curiosity hook plus exactly 5 hashtags), category (short label), keywords (array). Keep title and descriptions accurate to this video."""
+                gen = requests.post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+                    headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [
+                            {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                            {"text": ai_prompt},
+                        ]}],
+                        "generationConfig": {"temperature": 0.45, "responseMimeType": "application/json"},
+                    },
+                    timeout=240,
+                )
+                gen.raise_for_status()
+                gen_data = gen.json()
+                if not isinstance(gen_data, dict):
+                    raise RuntimeError("Gemini response format తప్పుగా వచ్చింది. మళ్లీ Generate చేయి.")
+                candidates = gen_data.get("candidates", [])
+                text_parts = []
+                for candidate in candidates if isinstance(candidates, list) else []:
+                    if not isinstance(candidate, dict):
+                        continue
+                    content_obj = candidate.get("content", {})
+                    if not isinstance(content_obj, dict):
+                        continue
+                    parts = content_obj.get("parts", [])
+                    for part in parts if isinstance(parts, list) else []:
+                        if isinstance(part, dict) and isinstance(part.get("text"), str):
+                            text_parts.append(part["text"])
+                generated_text = "\\n".join(text_parts).strip()
+                if not generated_text:
+                    raise RuntimeError("Gemini నుంచి వివరాలు రాలేదు. API response: " + json.dumps(gen_data, ensure_ascii=False)[:700])
+                generated_text = generated_text.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+                # Gemini may occasionally wrap the requested object in a one-item
+                # array or a named envelope. Normalize these safe response shapes.
+                metadata = json.loads(generated_text)
+                if isinstance(metadata, list):
+                    metadata = next((item for item in metadata if isinstance(item, dict)), None)
+                if isinstance(metadata, dict):
+                    for wrapper_key in ("metadata", "result", "data", "output"):
+                        wrapped = metadata.get(wrapper_key)
+                        if isinstance(wrapped, dict):
+                            metadata = wrapped
+                            break
+                if not isinstance(metadata, dict):
+                    raise RuntimeError(
+                        "Gemini సమాధానం JSON object రూపంలో రాలేదు. Generate మళ్లీ నొక్కి ప్రయత్నించు. "
+                        "వివరాలు ఇంకా రాకపోతే Gemini API response format తనిఖీ చేయాలి."
+                    )
+                for field in ["title", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption"]:
+                    metadata.setdefault(field, [] if field in ["tags", "hashtags"] else "")
+                if not isinstance(metadata.get("tags"), list):
+                    metadata["tags"] = [str(metadata["tags"])]
+                if not isinstance(metadata.get("hashtags"), list):
+                    metadata["hashtags"] = [str(metadata["hashtags"])]
+                st.session_state["ai_video_metadata"] = metadata
+                st.session_state["ai_video_description"] = str(metadata.get("description", ""))
+                st.session_state["ai_video_title"] = str(metadata.get("title", ""))[:100]
+                st.session_state["ai_video_tags"] = ", ".join(str(tag) for tag in metadata.get("tags", []))
+
+                # If the owner has not supplied a thumbnail, ask Gemini image
+                # generation to create one using the actual uploaded video as context.
+                st.session_state["ai_generated_thumbnail_bytes"] = None
+                st.session_state["ai_generated_thumbnail_mime"] = "image/png"
+                try:
+                    thumb_prompt = (
+                        "Create one polished YouTube thumbnail image for this exact video. "
+                        "Use the supplied video as the only source of truth. "
+                        + str(metadata.get("thumbnail_prompt", "")).strip()
+                        + " Make the main subject large, expressive and instantly readable on a phone. "
+                        "Use a cinematic composition, high contrast and crisp details. "
+                        "Do not add text, letters, captions, logos or watermarks. "
+                        "Return an image, not a written prompt."
+                    )
+                    thumb_response = None
+                    thumb_data = {}
+                    # Retry transient image-model rate limits with exponential backoff.
+                    for thumb_attempt in range(3):
+                        thumb_response = requests.post(
+                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+                            headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                            json={
+                                "contents": [{"parts": [
+                                    {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                                    {"text": thumb_prompt},
+                                ]}],
+                                "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                            },
+                            timeout=240,
+                        )
+                        if thumb_response.status_code not in (429, 500, 502, 503, 504) or thumb_attempt == 2:
+                            break
+                        time.sleep(2 ** (thumb_attempt + 1))
+                    if not thumb_response.ok:
+                        try:
+                            thumb_error = thumb_response.json().get("error", {}).get("message", thumb_response.text)
+                        except Exception:
+                            thumb_error = thumb_response.text
+                        raise RuntimeError(f"Gemini Image API ({thumb_response.status_code}): {thumb_error}")
+                    thumb_data = thumb_response.json()
+                    generated_image = None
+                    for thumb_candidate in thumb_data.get("candidates", []):
+                        for thumb_part in thumb_candidate.get("content", {}).get("parts", []):
+                            inline_data = thumb_part.get("inlineData") or thumb_part.get("inline_data")
+                            if isinstance(inline_data, dict) and inline_data.get("data"):
+                                import base64
+                                generated_image = base64.b64decode(inline_data["data"])
+                                st.session_state["ai_generated_thumbnail_mime"] = inline_data.get("mimeType", inline_data.get("mime_type", "image/png"))
+                                break
+                        if generated_image:
+                            break
+                    if generated_image:
+                        st.session_state["ai_generated_thumbnail_bytes"] = generated_image
+                    else:
+                        st.warning("Gemini వివరాలు తయారు చేసింది, కానీ ఆటో Thumbnail image రాలేదు. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+                except Exception as thumb_exc:
+                    st.warning(f"Gemini వివరాలు సిద్ధం అయ్యాయి. ఆటో Thumbnail తయారీలో సమస్య: {thumb_exc}. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+                st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. Thumbnail నువ్వు ఇస్తే అదే; ఇవ్వకపోతే Gemini తయారు చేసినదాన్ని వాడతాం. Upload ముందు Review చేయి.")
+            except Exception as exc:
+                st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
+    elif uploaded_video and not GEMINI_KEY:
+        st.warning("Gemini API key లేదు. Streamlit Secretsలో GEMINI_API_KEY తనిఖీ చేయి.")
+
+    metadata = st.session_state.get("ai_video_metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+        st.session_state["ai_video_metadata"] = {}
+    if metadata:
+        st.markdown("#### ✨ Gemini తయారు చేసిన వివరాలు — Review చేయి")
+        st.text_input("YouTube Title", key="ai_video_title", max_chars=100)
+        st.text_area("Description", key="ai_video_description", height=140)
+        st.text_input("Tags (comma separated)", key="ai_video_tags")
+        st.write("**Hashtags:** " + " ".join(metadata.get("hashtags", [])))
+        generated_thumb = st.session_state.get("ai_generated_thumbnail_bytes")
+        if generated_thumb:
+            st.write("**Gemini తయారు చేసిన Thumbnail Preview (నువ్వు ఇవ్వనప్పుడు):**")
+            st.image(generated_thumb, use_container_width=True)
+        st.write("**Instagram Caption:**")
+        st.write(metadata.get("instagram_caption", ""))
+        st.write("**YouTube Caption:**")
+        st.write(metadata.get("youtube_caption", ""))
+
+    with st.form("youtube_private_upload_form"):
+        upload_thumbnail = st.file_uploader("Thumbnail image (ఐచ్ఛికం)", type=["jpg", "jpeg", "png"])
+        upload_submit = st.form_submit_button("🔒 Review చేసిన వివరాలతో Privateగా Upload చేయి", type="primary")
+
+    if upload_submit:
+        upload_title = st.session_state.get("ai_video_title", "").strip()
+        upload_description = st.session_state.get("ai_video_description", "")
+        upload_tags_text = st.session_state.get("ai_video_tags", "")
+        if not uploaded_video or not upload_title:
+            st.warning("ముందుగా వీడియో ఎంచుకుని Geminiతో వివరాలు తయారు చేయి.")
+        else:
+            try:
+                from googleapiclient.errors import HttpError
+                tags = [tag.strip() for tag in upload_tags_text.split(",") if tag.strip()][:500]
+                media = MediaIoBaseUpload(
+                    io.BytesIO(uploaded_video.getvalue()),
+                    mimetype=uploaded_video.type or "video/mp4",
+                    chunksize=8 * 1024 * 1024,
+                    resumable=True,
+                )
+                with st.spinner("YouTubeకి Private వీడియో Upload అవుతోంది..."):
+                    request = youtube_owner.videos().insert(
+                        part="snippet,status",
+                        body={
+                            "snippet": {
+                                "title": upload_title.strip(),
+                                "description": upload_description,
+                                "tags": tags,
+                                "categoryId": "23",
+                            },
+                            "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
+                        },
+                        media_body=media,
+                    )
+                    result = None
+                    while result is None:
+                        _, result = request.next_chunk()
+                new_video_id = result["id"]
+                st.session_state["last_uploaded_video_id"] = new_video_id
+                st.session_state["last_uploaded_video_title"] = upload_title.strip()
+                # A manually selected thumbnail always takes priority.
+                # Otherwise use the Gemini-generated image when available.
+                thumbnail_bytes = upload_thumbnail.getvalue() if upload_thumbnail else st.session_state.get("ai_generated_thumbnail_bytes")
+                thumbnail_mime = (upload_thumbnail.type or "image/jpeg") if upload_thumbnail else st.session_state.get("ai_generated_thumbnail_mime", "image/png")
+                if thumbnail_bytes:
+                    thumb_media = MediaIoBaseUpload(
+                        io.BytesIO(thumbnail_bytes),
+                        mimetype=thumbnail_mime,
+                        resumable=False,
+                    )
+                    youtube_owner.thumbnails().set(videoId=new_video_id, media_body=thumb_media).execute()
+                else:
+                    st.warning("Thumbnail image అందుబాటులో లేదు. YouTube default thumbnailతో వీడియో Privateగా Upload అయింది.")
+                st.success("వీడియో Privateగా Upload అయింది. నీ Approval వచ్చే వరకు Public కాదు.")
+                st.video(uploaded_video.getvalue())
+                st.markdown(f"[YouTubeలో Private Preview తెరువు](https://youtu.be/{new_video_id})")
+            except Exception as exc:
+                st.error(f"Upload failed: {exc}")
+
+    pending_id = st.session_state.get("last_uploaded_video_id")
+    if not pending_id:
+        pending_id = st.text_input(
+            "ఇప్పటికే YouTubeలో Privateగా ఉన్న వీడియో ID (మళ్లీ Upload అవసరం లేదు)",
+            value="",
+            key="manual_pending_video_id",
+            help="ఉదా: yCAeNqEs3Ao — Private వీడియోను Review చేసి Schedule చేయడానికి.",
+        ).strip()
+    if pending_id:
+        st.subheader("నీ Approval కోసం")
+        st.write(st.session_state.get("last_uploaded_video_title", "Uploaded video"))
+        st.markdown(f"[YouTube Preview](https://youtu.be/{pending_id})")
+        from datetime import datetime, date, time, timedelta
+        from zoneinfo import ZoneInfo
+        india_tz = ZoneInfo("Asia/Kolkata")
+        scheduled_at = st.session_state.get("last_uploaded_video_scheduled_at")
+        if scheduled_at:
+            st.info(f"ఈ వీడియో Schedule అయింది: {scheduled_at} (IST). YouTube సమయానికి Public చేస్తుంది.")
+        publish_mode = st.radio(
+            "ఎప్పుడు Public చేయాలి?",
+            ["వెంటనే Public చేయి", "తేదీ, సమయానికి Schedule చేయి"],
+            horizontal=True,
+            key="youtube_publish_mode",
+        )
+        if publish_mode == "వెంటనే Public చేయి":
+            if st.button("✅ Approve చేసి ఇప్పుడే Public చేయి", type="primary"):
+                try:
+                    current = youtube_owner.videos().list(part="status", id=pending_id).execute()
+                    if not current.get("items"):
+                        st.error("ఈ వీడియోను YouTubeలో కనుగొనలేకపోయాం.")
+                    else:
+                        status = current["items"][0].get("status", {})
+                        status.pop("publishAt", None)
+                        status["privacyStatus"] = "public"
+                        youtube_owner.videos().update(part="status", body={"id": pending_id, "status": status}).execute()
+                        st.success("నీ Approvalతో వీడియో Public అయింది!")
+                        st.session_state["last_uploaded_video_id"] = None
+                        st.session_state["last_uploaded_video_scheduled_at"] = None
+                except Exception as exc:
+                    st.error(f"Publish failed: {exc}")
+        else:
+            default_schedule = datetime.now(india_tz) + timedelta(hours=1)
+            schedule_col1, schedule_col2 = st.columns(2)
+            with schedule_col1:
+                schedule_date = st.date_input(
+                    "Public అయ్యే తేదీ",
+                    value=default_schedule.date(),
+                    min_value=date.today(),
+                    key="youtube_schedule_date",
+                )
+            with schedule_col2:
+                st.markdown("**Public అయ్యే సమయం (IST)**")
+                default_clock = default_schedule.time()
+                default_hour_12 = default_clock.hour % 12 or 12
+                default_ampm = "PM" if default_clock.hour >= 12 else "AM"
+                hour_col, minute_col, ampm_col = st.columns([1, 1, 1])
+                with hour_col:
+                    schedule_hour_12 = st.selectbox(
+                        "Hour",
+                        options=list(range(1, 13)),
+                        index=default_hour_12 - 1,
+                        key="youtube_schedule_hour_12",
+                    )
+                with minute_col:
+                    schedule_minute = st.selectbox(
+                        "Minute",
+                        options=list(range(60)),
+                        index=default_clock.minute,
+                        format_func=lambda minute: f"{minute:02d}",
+                        key="youtube_schedule_minute",
+                    )
+                with ampm_col:
+                    schedule_ampm = st.selectbox(
+                        "AM / PM",
+                        options=["AM", "PM"],
+                        index=0 if default_ampm == "AM" else 1,
+                        key="youtube_schedule_ampm",
+                    )
+            hour_24 = (schedule_hour_12 % 12) + (12 if schedule_ampm == "PM" else 0)
+            schedule_time = time(hour_24, schedule_minute)
+            if st.button("🗓️ Approve చేసి Schedule చేయి", type="primary"):
+                try:
+                    publish_datetime = datetime.combine(schedule_date, schedule_time, tzinfo=india_tz)
+                    if publish_datetime <= datetime.now(india_tz) + timedelta(minutes=2):
+                        st.error("దయచేసి కనీసం 2 నిమిషాల తర్వాతి సమయాన్ని ఎంచుకో.")
+                    else:
+                        current = youtube_owner.videos().list(part="status", id=pending_id).execute()
+                        if not current.get("items"):
+                            st.error("ఈ వీడియోను YouTubeలో కనుగొనలేకపోయాం.")
+                        else:
+                            status = current["items"][0].get("status", {})
+                            # YouTube only accepts publishAt for a video that is
+                            # still private and has never been published.
+                            if status.get("privacyStatus") == "public":
+                                st.error("ఈ వీడియో ఇప్పటికే Public అయింది. Schedule చేయలేం.")
+                            elif status.get("uploadStatus") not in (None, "processed"):
+                                st.error(f"వీడియో ఇంకా processingలో ఉంది (uploadStatus: {status.get('uploadStatus')}). Processing పూర్తయ్యాక మళ్లీ ప్రయత్నించు.")
+                            else:
+                                status["privacyStatus"] = "private"
+                                status["publishAt"] = publish_datetime.isoformat(timespec="seconds")
+                                update_result = youtube_owner.videos().update(
+                                    part="status",
+                                    body={"id": pending_id, "status": status}
+                                ).execute()
+
+                                # Read the video back from YouTube. Never show
+                                # success based only on the update request returning.
+                                verified = youtube_owner.videos().list(
+                                    part="status,snippet",
+                                    id=pending_id
+                                ).execute()
+                                verified_items = verified.get("items", [])
+                                verified_status = verified_items[0].get("status", {}) if verified_items else {}
+                                verified_publish_at = verified_status.get("publishAt")
+                                if (
+                                    verified_items
+                                    and verified_status.get("privacyStatus") == "private"
+                                    and verified_publish_at
+                                ):
+                                    st.session_state["last_uploaded_video_scheduled_at"] = verified_publish_at
+                                    st.success(
+                                        "✅ YouTube Schedule నిర్ధారించింది. "
+                                        f"Publish time: {verified_publish_at}. "
+                                        "YouTube Studioలో Visibility → Scheduledగా కనిపించాలి."
+                                    )
+                                else:
+                                    st.session_state["last_uploaded_video_scheduled_at"] = None
+                                    st.error(
+                                        "YouTube Scheduleని నిర్ధారించలేదు. వీడియో ఇంకా "
+                                        f"{verified_status.get('privacyStatus', 'తెలియని status')}గానే ఉంది. "
+                                        f"publishAt: {verified_publish_at or 'లేదు'}. "
+                                        "YouTube API update responseలో వచ్చిన statusను మళ్లీ తనిఖీ చేయాలి."
+                                    )
+                except Exception as exc:
+                    st.error(f"Schedule failed: {exc}")
+        st.divider()
+        if st.button("🔎 YouTubeలో అసలు Schedule Status తనిఖీ చేయి"):
+            try:
+                live_check = youtube_owner.videos().list(
+                    part="status,snippet",
+                    id=pending_id
+                ).execute()
+                live_items = live_check.get("items", [])
+                if not live_items:
+                    st.error("YouTubeలో ఈ Video ID కనిపించలేదు.")
+                else:
+                    live_status = live_items[0].get("status", {})
+                    live_publish_at = live_status.get("publishAt")
+                    st.write("**YouTube Privacy:**", live_status.get("privacyStatus", "తెలియదు"))
+                    if live_publish_at:
+                        live_dt = datetime.fromisoformat(live_publish_at.replace("Z", "+00:00"))
+                        st.write("**YouTube Publish time (IST):**", live_dt.astimezone(india_tz).strftime("%d-%m-%Y %I:%M %p"))
+                        st.success("YouTube APIలో publishAt ఉంది. Studioలో Scheduledగా కనిపించకపోతే Studio refresh చేసి సరైన channel/accountలో చూడాలి.")
+                    else:
+                        st.error("YouTube APIలో publishAt లేదు. కాబట్టి వీడియో నిజంగా Schedule కాలేదు; ప్రస్తుతం Private మాత్రమే.")
+            except Exception as exc:
+                st.error(f"Status check failed: {exc}")
+
+        if st.button("🔐 Privateగానే ఉంచు"):
+            st.info("వీడియో Privateగానే ఉంటుంది. Schedule చేయలేదు.")
+
+    st.subheader("📊 వీడియో Analytics")
+    analysis_id = st.text_input(
+        "YouTube Video ID",
+        value=st.session_state.get("last_uploaded_video_id") or "",
+        help="ఉదా: https://youtu.be/VIDEO_ID లో చివరి భాగం",
+    )
+    from datetime import date, timedelta
+    end_day = date.today() - timedelta(days=2)
+    start_day = end_day - timedelta(days=6)
+    date_col1, date_col2 = st.columns(2)
+    with date_col1:
+        analytics_start = st.date_input("Start date", value=start_day)
+    with date_col2:
+        analytics_end = st.date_input("End date", value=end_day)
+    if st.button("📈 Analytics చూడు"):
+        if not analysis_id.strip():
+            st.warning("ముందుగా Video ID ఇవ్వండి.")
+        elif analytics_end < analytics_start:
+            st.warning("End date, Start date తర్వాత ఉండాలి.")
+        else:
+            try:
+                public_data = youtube_owner.videos().list(part="snippet,statistics,status", id=analysis_id.strip()).execute()
+                if not public_data.get("items"):
+                    st.warning("ఈ Video ID నీ channelలో కనిపించలేదు.")
+                else:
+                    item = public_data["items"][0]
+                    stats = item.get("statistics", {})
+                    a, b, c = st.columns(3)
+                    a.metric("Views", f'{int(stats.get("viewCount", 0)):,}')
+                    b.metric("Likes", f'{int(stats.get("likeCount", 0)):,}')
+                    c.metric("Comments", f'{int(stats.get("commentCount", 0)):,}')
+                    st.write("Privacy:", item.get("status", {}).get("privacyStatus", "unknown"))
+                    report = analytics_owner.reports().query(
+                        ids="channel==MINE",
+                        startDate=analytics_start.isoformat(),
+                        endDate=analytics_end.isoformat(),
+                        metrics="views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,shares,subscribersGained,subscribersLost",
+                        dimensions="day",
+                        filters=f"video=={analysis_id.strip()}",
+                        sort="day",
+                    ).execute()
+                    headers = [h.get("name") for h in report.get("columnHeaders", [])]
+                    data_rows = report.get("rows", [])
+                    if data_rows:
+                        import pandas as pd
+                        st.caption("YouTube Analytics: Views, watch time, average view duration, average view %, likes, comments, shares, subscribers gained/lost. Recent 1–2 days data may be delayed. Thumbnail impressions/CTR are not available through this targeted Analytics query.")
+                        st.dataframe(pd.DataFrame(data_rows, columns=headers), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("ఈ తేదీలకు Analytics data ఇంకా లేదు. వీడియో కొత్తదైతే కొంత సమయం తర్వాత మళ్లీ ప్రయత్నించు.")
+            except Exception as exc:
+                st.warning(f"Analytics data ఇప్పుడందుబాటులో లేదు: {exc}")
+
+
 # Gemini-powered Telugu content studio
 st.divider()
 st.header("✨ Gemini AI Content Studio")
