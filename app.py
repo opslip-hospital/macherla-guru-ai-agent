@@ -363,7 +363,7 @@ else:
     st.subheader("🎬 ఒక్క వీడియో ఇవ్వు — మిగతావన్నీ Gemini సిద్ధం చేస్తుంది")
     uploaded_video = st.file_uploader("నీ వీడియో ఎంచుకోండి", type=["mp4", "mov", "avi", "webm"], key="source_video_for_ai")
     if uploaded_video and GEMINI_KEY:
-        if st.button("✨ ఈ వీడియో చూసి Title, SEO, Tags, Captions తయారు చేయి", type="primary):
+        if st.button("✨ ఈ వీడియో చూసి Title, SEO, Tags, Captions తయారు చేయి", type="primary"):
             try:
                 video_bytes = uploaded_video.getvalue()
                 mime_type = uploaded_video.type or "video/mp4"
