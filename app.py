@@ -134,4 +134,92 @@ except requests.HTTPError as e:
     st.error(f"YouTube API error: {e}. Check the API key and YouTube Data API v3 is enabled.")
 except Exception as e:
     st.error(str(e))
+
+# Gemini-powered Telugu content studio
+st.divider()
+st.header("✨ Gemini AI Content Studio")
+if not GEMINI_KEY:
+    st.info("Gemini API key not detected. Add GEMINI_API_KEY in Streamlit → Settings → Secrets.")
+else:
+    st.success("Gemini API key detected.")
+    content_type = st.selectbox(
+        "ఏం తయారు చేయాలి?",
+        ["PJ Babu కామెడీ స్క్రిప్ట్", "YouTube Shorts Title + SEO", "Thumbnail Prompt", "Weekly Content Calendar", "Complete Video Package"]
+    )
+    topic = st.text_area(
+        "వీడియో ఐడియా / టాపిక్",
+        placeholder="ఉదా: యముడు నరకాన్ని PJ Babu కి అమ్మేశాడు… దాని వెనుక కామెడీ కథ",
+        height=90
+    )
+    extra = st.text_input("అదనపు సూచన (ఐచ్ఛికం)", placeholder="ఉదా: 10 సెకన్ల వీడియో, యమలోకం సెట్")
+    if st.button("🚀 Gemini తో Generate చేయి", type="primary"):
+        if not topic.strip():
+            st.warning("ముందుగా వీడియో టాపిక్ రాయండి.")
+        else:
+            channel_title = "Macherla Guru"
+            try:
+                if "snippet" in locals():
+                    channel_title = snippet.get("title") or channel_title
+                recent_context = ""
+                if "rows" in locals() and rows:
+                    recent_context = "\\n".join(
+                        f"- {r.get('Title','')} ({r.get('Views',0)} views)"
+                        for r in rows[:8]
+                    )
+                prompt = f"""
+You are a Telugu YouTube Shorts creative strategist for the channel {channel_title}.
+Create original, engaging content in natural spoken Telugu (Telugu script), with punchy comedy.
+Channel niche: Mixed Telugu AI Entertainment, especially PJ Babu and Yamalokam comedy.
+User topic: {topic}
+Extra instructions: {extra or 'None'}
+Requested output: {content_type}
+Recent public channel video context (use only as inspiration, do not copy):
+{recent_context or 'Not available'}
+Rules:
+- Strong hook in the first 1-3 seconds.
+- Keep dialogue natural, short, funny and easy to perform.
+- For a 10-second script, fit the dialogue and action realistically within 10 seconds.
+- Give clear character names, actions, camera shots and exact dialogue.
+- Do not invent channel analytics or guarantee views.
+- For hashtags, give exactly 5 relevant hashtags; avoid unrelated generic tags.
+- For thumbnail prompts, specify 9:16 or 16:9 only when appropriate, 4K cinematic 3D CGI, clear expressions, readable composition, and no unwanted text.
+Return clean headings and ready-to-use output.
+"""
+                with st.spinner("Gemini మీ కంటెంట్ తయారు చేస్తోంది..."):
+                    response = requests.post(
+                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+                        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                        json={
+                            "contents": [{"parts": [{"text": prompt}]}],
+                            "generationConfig": {"temperature": 0.85, "maxOutputTokens": 1800}
+                        },
+                        timeout=60
+                    )
+                    if not response.ok:
+                        try:
+                            detail = response.json().get("error", {}).get("message", response.text)
+                        except Exception:
+                            detail = response.text
+                        st.error(f"Gemini API error ({response.status_code}): {detail}")
+                    else:
+                        payload = response.json()
+                        generated = "\\n".join(
+                            part.get("text", "")
+                            for candidate in payload.get("candidates", [])
+                            for part in candidate.get("content", {}).get("parts", [])
+                            if part.get("text")
+                        ).strip()
+                        if generated:
+                            st.markdown(generated)
+                            st.download_button(
+                                "⬇️ Download content as TXT",
+                                data=generated,
+                                file_name="macherla-guru-ai-content.txt",
+                                mime="text/plain"
+                            )
+                        else:
+                            st.error("Gemini నుంచి text రాలేదు. మరోసారి ప్రయత్నించండి.")
+            except requests.RequestException as exc:
+                st.error(f"Network error: {exc}")
+
 st.caption("Privacy: API keys must be stored as deployment secrets, never committed to GitHub. This starter dashboard reads public channel/video data only; private YouTube Analytics requires a separate OAuth authorization.")
