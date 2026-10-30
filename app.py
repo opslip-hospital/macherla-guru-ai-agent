@@ -354,28 +354,50 @@ elif not owner_creds:
     st.caption("నీ Google accountలో Macherla Guru channel access ఉన్న accountతోనే అనుమతి ఇవ్వాలి.")
 else:
     st.success("YouTube channel connected for upload and analytics.")
-    st.warning(
-        "Schedule/Publish permission కోసం Googleలో మళ్లీ అనుమతి ఇవ్వాలి. "
-        "క్రింది బటన్ నొక్కి అదే Macherla Guru channel ఉన్న Google accountతో Continue చేసి permissions Allow చేయి."
-    )
-    from google_auth_oauthlib.flow import Flow
+
+    # Verify the scopes actually granted by Google. Do not show a stale,
+    # unconditional warning after a successful re-authorization.
+    schedule_scope = "https://www.googleapis.com/auth/youtube.force-ssl"
+    granted_scopes = set()
+    scope_check_error = None
     try:
-        # Always render the re-authorization link; do not hide it behind a second button.
-        reauth_flow = Flow.from_client_config(
-            oauth_config, scopes=YT_SCOPES, redirect_uri=oauth_redirect_uri
+        token_check = requests.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"access_token": owner_creds.token},
+            timeout=15,
         )
-        reauth_flow.code_verifier = secrets.token_urlsafe(64)
-        reauth_state = make_oauth_state(reauth_flow.code_verifier)
-        reauth_url, _ = reauth_flow.authorization_url(
-            access_type="offline",
-            include_granted_scopes="true",
-            prompt="consent",
-            state=reauth_state,
-        )
-        st.markdown(f"### [🔄 Google Reconnect — Schedule Permission ఇవ్వు]({reauth_url})")
-        st.caption("Googleలో అదే Macherla Guru channel account ఎంచుకుని అన్ని permissions Allow చేయి. పూర్తయ్యాక Dashboardకు తిరిగి వస్తుంది.")
+        token_check.raise_for_status()
+        granted_scopes = set(token_check.json().get("scope", "").split())
     except Exception as exc:
-        st.error(f"Could not start YouTube re-authorization: {exc}")
+        scope_check_error = exc
+
+    if schedule_scope in granted_scopes:
+        st.success("✅ Google Schedule/Publish permission verified. You can schedule approved videos.")
+    else:
+        if scope_check_error:
+            st.warning(f"Google Schedule permission could not be verified right now: {scope_check_error}")
+        else:
+            st.warning(
+                "Schedule/Publish permission ఇంకా Google tokenలో కనిపించడం లేదు. "
+                "క్రింది Google Reconnect లింక్ ద్వారా అదే Macherla Guru accountతో మళ్లీ Allow చేయి."
+            )
+        from google_auth_oauthlib.flow import Flow
+        try:
+            reauth_flow = Flow.from_client_config(
+                oauth_config, scopes=YT_SCOPES, redirect_uri=oauth_redirect_uri
+            )
+            reauth_flow.code_verifier = secrets.token_urlsafe(64)
+            reauth_state = make_oauth_state(reauth_flow.code_verifier)
+            reauth_url, _ = reauth_flow.authorization_url(
+                access_type="offline",
+                include_granted_scopes="true",
+                prompt="consent",
+                state=reauth_state,
+            )
+            st.markdown(f"### [🔄 Google Reconnect — Schedule Permission ఇవ్వు]({reauth_url})")
+            st.caption("Googleలో అదే Macherla Guru channel account ఎంచుకుని YouTube permissions Allow చేయి. పూర్తయ్యాక Dashboardకు తిరిగి వస్తుంది.")
+        except Exception as exc:
+            st.error(f"Could not start YouTube re-authorization: {exc}")
     if not get_supabase_config():
         st.warning("Persistent login is not configured yet. Add [supabase] url and secret_key in Streamlit Secrets; the OAuth token will then be encrypted and stored outside the app session.")
     from googleapiclient.discovery import build
