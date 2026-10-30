@@ -186,15 +186,26 @@ Rules:
 Return clean headings and ready-to-use output.
 """
                 with st.spinner("Gemini మీ కంటెంట్ తయారు చేస్తోంది..."):
-                    response = requests.post(
-                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
-                        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                        json={
-                            "contents": [{"parts": [{"text": prompt}]}],
-                            "generationConfig": {"temperature": 0.85, "maxOutputTokens": 1800}
-                        },
-                        timeout=60
-                    )
+                    request_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
+                    request_headers = {"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}
+                    request_body = {
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"temperature": 0.85, "maxOutputTokens": 1400}
+                    }
+                    # Allow extra time for a cold start and retry once on a transient timeout.
+                    response = None
+                    for attempt in range(2):
+                        try:
+                            response = requests.post(
+                                request_url,
+                                headers=request_headers,
+                                json=request_body,
+                                timeout=(15, 180)
+                            )
+                            break
+                        except requests.Timeout:
+                            if attempt == 1:
+                                raise
                     if not response.ok:
                         try:
                             detail = response.json().get("error", {}).get("message", response.text)
