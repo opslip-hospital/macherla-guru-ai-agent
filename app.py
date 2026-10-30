@@ -176,12 +176,19 @@ Requested output: {content_type}
 Recent public channel video context (use only as inspiration, do not copy):
 {recent_context or 'Not available'}
 Rules:
-- Strong hook in the first 1-3 seconds.
-- Keep dialogue natural, short, funny and easy to perform.
-- For a 10-second script, fit the dialogue and action realistically within 10 seconds.
-- Give clear character names, actions, camera shots and exact dialogue.
-- Do not invent channel analytics or guarantee views.
-- For hashtags, give exactly 5 relevant hashtags; avoid unrelated generic tags.
+- Strong hook starts on the very first frame / first spoken line. No slow intro, no dead air, no long pauses.
+- Write all spoken dialogue ONLY in natural Telugu script. Never insert Chinese, Thai, Hindi or other foreign-script characters. Do not translate, shorten or silently alter any user-supplied exact dialogue.
+- Keep a 10-second video realistic: usually 1-2 short dialogue turns maximum, with clear speaker attribution and enough time for lip-sync. Do not overcrowd it with too many lines or scene changes.
+- When Requested output is "PJ Babu కామెడీ స్క్రిప్ట్" or "Complete Video Package", ALWAYS include all of these sections:
+  1) Telugu comedy script with timestamps, actions and exact dialogue.
+  2) A single copy-paste-ready Google Flow video prompt for one 10-second take. Start it with: "ULTRA PREMIUM CINEMATIC 3D CGI ANIMATED MOVIE | 4K | GRAND COMEDY FINALE". Specify 9:16 vertical unless the user asks otherwise; colorful ultra-premium 3D CGI; cinematic establishing shot, purposeful camera movement, speaker-focused close-ups/reaction shots, precise Telugu lip-sync, and comedy timing. Make the prompt self-contained and ready to paste.
+  3) Character and continuity locks: PJ Babu must match the user's uploaded character-sheet reference exactly (same face shape, eyes, nose, lips, moustache, hairstyle, skin tone and identity; medium build; blue-red-orange checked shirt, blue jeans, wristwatch and white/gray sneakers). Do not redesign, beautify, replace, shrink or drift his face/body/outfit. Tell the user to attach the PJ Babu character-sheet image in Google Flow as the visual reference. Keep Yama consistent with his black-and-gold royal look, crown and moustache. Chitragupta wears traditional accountant attire and MUST NOT wear a crown. Keep character scale, positions, props and palace layout consistent.
+  4) Thumbnail image prompt with expressive readable composition and no unwanted text.
+  5) Instagram and YouTube captions with a curiosity-driven first line, plus exactly 5 relevant hashtags.
+- For the Google Flow prompt: no subtitles, captions, title cards, labels, logos or watermarks; no extra characters or unrequested dialogue; no BGM when dialogue clarity is requested. Camera must turn smoothly to the active speaker; actions must happen exactly with the dialogue. Do not add unnecessary walking or ramp-walks before the hook. Avoid violent wording; keep slapstick/fantasy comedy non-graphic.
+- Use an energetic Telugu mass-comedy hero delivery for PJ Babu, not a Motu-like voice and do not request an exact real-person voice clone.
+- For other Requested output types, answer that requested format only, unless the user explicitly asks for the full package.
+- Do not invent channel analytics or guarantee views. Use recent video context only as inspiration, never copy it.
 - For thumbnail prompts, specify 9:16 or 16:9 only when appropriate, 4K cinematic 3D CGI, clear expressions, readable composition, and no unwanted text.
 Return clean headings and ready-to-use output.
 """
@@ -190,7 +197,7 @@ Return clean headings and ready-to-use output.
                     request_headers = {"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}
                     request_body = {
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"temperature": 0.85, "maxOutputTokens": 1400}
+                        "generationConfig": {"temperature": 0.85, "maxOutputTokens": 2400}
                     }
                     # Allow extra time for a cold start and retry once on a transient timeout.
                     response = None
