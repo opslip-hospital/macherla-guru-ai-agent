@@ -467,7 +467,53 @@ else:
                 st.session_state["ai_video_description"] = str(metadata.get("description", ""))
                 st.session_state["ai_video_title"] = str(metadata.get("title", ""))[:100]
                 st.session_state["ai_video_tags"] = ", ".join(str(tag) for tag in metadata.get("tags", []))
-                st.success("వీడియో చూసి నీకు కావాల్సిన వివరాలు Gemini సిద్ధం చేసింది. Upload ముందు Review చేయి.")
+
+                # If the owner has not supplied a thumbnail, ask Gemini image
+                # generation to create one using the actual uploaded video as context.
+                st.session_state["ai_generated_thumbnail_bytes"] = None
+                st.session_state["ai_generated_thumbnail_mime"] = "image/png"
+                try:
+                    thumb_prompt = (
+                        "Create one polished YouTube thumbnail image for this exact video. "
+                        "Use the supplied video as the only source of truth. "
+                        + str(metadata.get("thumbnail_prompt", "")).strip()
+                        + " Make the main subject large, expressive and instantly readable on a phone. "
+                        "Use a cinematic composition, high contrast and crisp details. "
+                        "Do not add text, letters, captions, logos or watermarks. "
+                        "Return an image, not a written prompt."
+                    )
+                    thumb_response = requests.post(
+                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+                        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                        json={
+                            "contents": [{"parts": [
+                                {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                                {"text": thumb_prompt},
+                            ]}],
+                            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                        },
+                        timeout=240,
+                    )
+                    thumb_response.raise_for_status()
+                    thumb_data = thumb_response.json()
+                    generated_image = None
+                    for thumb_candidate in thumb_data.get("candidates", []):
+                        for thumb_part in thumb_candidate.get("content", {}).get("parts", []):
+                            inline_data = thumb_part.get("inlineData") or thumb_part.get("inline_data")
+                            if isinstance(inline_data, dict) and inline_data.get("data"):
+                                import base64
+                                generated_image = base64.b64decode(inline_data["data"])
+                                st.session_state["ai_generated_thumbnail_mime"] = inline_data.get("mimeType", inline_data.get("mime_type", "image/png"))
+                                break
+                        if generated_image:
+                            break
+                    if generated_image:
+                        st.session_state["ai_generated_thumbnail_bytes"] = generated_image
+                    else:
+                        st.warning("Gemini వివరాలు తయారు చేసింది, కానీ ఆటో Thumbnail image రాలేదు. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+                except Exception as thumb_exc:
+                    st.warning(f"Gemini వివరాలు సిద్ధం అయ్యాయి. ఆటో Thumbnail తయారీలో సమస్య: {thumb_exc}. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+                st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. Thumbnail నువ్వు ఇస్తే అదే; ఇవ్వకపోతే Gemini తయారు చేసినదాన్ని వాడతాం. Upload ముందు Review చేయి.")
             except Exception as exc:
                 st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
     elif uploaded_video and not GEMINI_KEY:
@@ -483,8 +529,10 @@ else:
         st.text_area("Description", key="ai_video_description", height=140)
         st.text_input("Tags (comma separated)", key="ai_video_tags")
         st.write("**Hashtags:** " + " ".join(metadata.get("hashtags", [])))
-        st.write("**Thumbnail Prompt:**")
-        st.write(metadata.get("thumbnail_prompt", ""))
+        generated_thumb = st.session_state.get("ai_generated_thumbnail_bytes")
+        if generated_thumb:
+            st.write("**Gemini తయారు చేసిన Thumbnail Preview (నువ్వు ఇవ్వనప్పుడు):**")
+            st.image(generated_thumb, use_container_width=True)
         st.write("**Instagram Caption:**")
         st.write(metadata.get("instagram_caption", ""))
         st.write("**YouTube Caption:**")
@@ -530,13 +578,19 @@ else:
                 new_video_id = result["id"]
                 st.session_state["last_uploaded_video_id"] = new_video_id
                 st.session_state["last_uploaded_video_title"] = upload_title.strip()
-                if upload_thumbnail:
+                # A manually selected thumbnail always takes priority.
+                # Otherwise use the Gemini-generated image when available.
+                thumbnail_bytes = upload_thumbnail.getvalue() if upload_thumbnail else st.session_state.get("ai_generated_thumbnail_bytes")
+                thumbnail_mime = (upload_thumbnail.type or "image/jpeg") if upload_thumbnail else st.session_state.get("ai_generated_thumbnail_mime", "image/png")
+                if thumbnail_bytes:
                     thumb_media = MediaIoBaseUpload(
-                        io.BytesIO(upload_thumbnail.getvalue()),
-                        mimetype=upload_thumbnail.type or "image/jpeg",
+                        io.BytesIO(thumbnail_bytes),
+                        mimetype=thumbnail_mime,
                         resumable=False,
                     )
                     youtube_owner.thumbnails().set(videoId=new_video_id, media_body=thumb_media).execute()
+                else:
+                    st.warning("Thumbnail image అందుబాటులో లేదు. YouTube default thumbnailతో వీడియో Privateగా Upload అయింది.")
                 st.success("వీడియో Privateగా Upload అయింది. నీ Approval వచ్చే వరకు Public కాదు.")
                 st.video(uploaded_video.getvalue())
                 st.markdown(f"[YouTubeలో Private Preview తెరువు](https://youtu.be/{new_video_id})")
