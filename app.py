@@ -56,24 +56,76 @@ try:
     st.caption(f"Channel ID: {channel.get('id','')}")
 
     if playlist_id:
-        uploads = yt_get("playlistItems", {"part":"snippet,contentDetails", "playlistId":playlist_id, "maxResults":50})
-        ids = [x.get("contentDetails",{}).get("videoId") for x in uploads.get("items",[]) if x.get("contentDetails",{}).get("videoId")]
-        if ids:
-            videos = yt_get("videos", {"part":"snippet,statistics,contentDetails", "id":",".join(ids)})
-            rows = []
-            for v in videos.get("items", []):
-                s = v.get("statistics", {})
-                rows.append({"Title":v.get("snippet",{}).get("title",""),"Published":v.get("snippet",{}).get("publishedAt","")[:10],"Views":int(s.get("viewCount",0)),"Likes":int(s.get("likeCount",0)),"Comments":int(s.get("commentCount",0)),"URL":"https://youtu.be/"+v["id"]})
-            rows.sort(key=lambda r:r["Views"], reverse=True)
-            st.subheader("Recent uploads — sorted by views")
-            st.dataframe(rows, use_container_width=True, hide_index=True)
-            st.download_button("Download video report CSV", data=__import__("pandas").DataFrame(rows).to_csv(index=False), file_name="macherla-guru-videos.csv", mime="text/csv")
+        st.subheader("Recent uploads — sorted by views")
+        uploads = yt_get("playlistItems", {
+            "part": "snippet,contentDetails",
+            "playlistId": playlist_id,
+            "maxResults": 50
+        })
+        upload_items = uploads.get("items", [])
+        if not upload_items:
+            st.warning("YouTube returned no items from the channel uploads playlist. Check that the channel has public uploads.")
+        else:
+            # Build rows from the uploads playlist first so titles remain visible
+            # even if some videos have disabled/unavailable statistics.
+            video_ids = []
+            rows_by_id = {}
+            for item in upload_items:
+                item_snippet = item.get("snippet", {})
+                content = item.get("contentDetails", {})
+                video_id = content.get("videoId") or item_snippet.get("resourceId", {}).get("videoId")
+                if not video_id:
+                    continue
+                video_ids.append(video_id)
+                rows_by_id[video_id] = {
+                    "Title": item_snippet.get("title", "Untitled video"),
+                    "Published": (content.get("videoPublishedAt") or item_snippet.get("publishedAt", ""))[:10],
+                    "Views": 0,
+                    "Likes": 0,
+                    "Comments": 0,
+                    "URL": "https://youtu.be/" + video_id
+                }
+
+            # Enrich playlist rows with public video statistics.
+            for offset in range(0, len(video_ids), 50):
+                batch = video_ids[offset:offset + 50]
+                video_data = yt_get("videos", {
+                    "part": "snippet,statistics",
+                    "id": ",".join(batch)
+                })
+                for video in video_data.get("items", []):
+                    video_id = video.get("id")
+                    if video_id not in rows_by_id:
+                        continue
+                    video_stats = video.get("statistics", {})
+                    video_snippet = video.get("snippet", {})
+                    row = rows_by_id[video_id]
+                    row["Title"] = video_snippet.get("title") or row["Title"]
+                    row["Published"] = (video_snippet.get("publishedAt") or row["Published"])[:10]
+                    row["Views"] = int(video_stats.get("viewCount", 0))
+                    row["Likes"] = int(video_stats.get("likeCount", 0))
+                    row["Comments"] = int(video_stats.get("commentCount", 0))
+
+            rows = sorted(rows_by_id.values(), key=lambda row: row["Views"], reverse=True)
+            if rows:
+                st.dataframe(rows, use_container_width=True, hide_index=True)
+                import pandas as pd
+                st.download_button(
+                    "Download video report CSV",
+                    data=pd.DataFrame(rows).to_csv(index=False),
+                    file_name="macherla-guru-videos.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.warning("Uploads were found, but no video IDs could be read. Try refreshing the app.")
+
             st.subheader("AI growth suggestions")
             st.write("Review your top videos, repeat winning formats with fresh stories, and strengthen the first 1–3 seconds. Public data does not include private CTR or audience retention.")
             if GEMINI_KEY:
                 st.success("Gemini key detected. AI recommendations can be enabled in the next setup step.")
             else:
                 st.info("Add a Gemini API key later for AI-written Telugu titles, descriptions and weekly ideas. The dashboard works without it.")
+
 except requests.HTTPError as e:
     st.error(f"YouTube API error: {e}. Check the API key and YouTube Data API v3 is enabled.")
 except Exception as e:
