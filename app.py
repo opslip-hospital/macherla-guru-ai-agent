@@ -372,7 +372,7 @@ else:
             prompt="consent",
             state=reauth_state,
         )
-        st.link_button("🔄 Google Reconnect — Schedule Permission ఇవ్వు", reauth_url, type="primary")
+        st.markdown(f"### [🔄 Google Reconnect — Schedule Permission ఇవ్వు]({reauth_url})")
         st.caption("Googleలో అదే Macherla Guru channel account ఎంచుకుని అన్ని permissions Allow చేయి. పూర్తయ్యాక Dashboardకు తిరిగి వస్తుంది.")
     except Exception as exc:
         st.error(f"Could not start YouTube re-authorization: {exc}")
