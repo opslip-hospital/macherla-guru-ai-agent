@@ -802,6 +802,29 @@ else:
                                     )
                 except Exception as exc:
                     st.error(f"Schedule failed: {exc}")
+        st.divider()
+        if st.button("🔎 YouTubeలో అసలు Schedule Status తనిఖీ చేయి"):
+            try:
+                live_check = youtube_owner.videos().list(
+                    part="status,snippet",
+                    id=pending_id
+                ).execute()
+                live_items = live_check.get("items", [])
+                if not live_items:
+                    st.error("YouTubeలో ఈ Video ID కనిపించలేదు.")
+                else:
+                    live_status = live_items[0].get("status", {})
+                    live_publish_at = live_status.get("publishAt")
+                    st.write("**YouTube Privacy:**", live_status.get("privacyStatus", "తెలియదు"))
+                    if live_publish_at:
+                        live_dt = datetime.fromisoformat(live_publish_at.replace("Z", "+00:00"))
+                        st.write("**YouTube Publish time (IST):**", live_dt.astimezone(india_tz).strftime("%d-%m-%Y %I:%M %p"))
+                        st.success("YouTube APIలో publishAt ఉంది. Studioలో Scheduledగా కనిపించకపోతే Studio refresh చేసి సరైన channel/accountలో చూడాలి.")
+                    else:
+                        st.error("YouTube APIలో publishAt లేదు. కాబట్టి వీడియో నిజంగా Schedule కాలేదు; ప్రస్తుతం Private మాత్రమే.")
+            except Exception as exc:
+                st.error(f"Status check failed: {exc}")
+
         if st.button("🔐 Privateగానే ఉంచు"):
             st.info("వీడియో Privateగానే ఉంటుంది. Schedule చేయలేదు.")
 
