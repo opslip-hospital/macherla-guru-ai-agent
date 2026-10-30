@@ -188,6 +188,8 @@ if "youtube_owner_token" not in st.session_state:
 # Complete the OAuth callback after the owner returns from Google.
 if oauth_config and st.query_params.get("code") and st.session_state.get("youtube_oauth_state"):
     try:
+        if st.query_params.get("state") != st.session_state["youtube_oauth_state"]:
+            raise ValueError("OAuth state mismatch. Start the YouTube connection again.")
         from google_auth_oauthlib.flow import Flow
         callback_flow = Flow.from_client_config(
             oauth_config,
