@@ -613,25 +613,71 @@ else:
     if pending_id:
         st.subheader("నీ Approval కోసం")
         st.write(st.session_state.get("last_uploaded_video_title", "Uploaded video"))
-        st.markdown(f"[Private YouTube Preview](https://youtu.be/{pending_id})")
-        approve_col, keep_col = st.columns(2)
-        with approve_col:
-            if st.button("✅ Approve చేసి Public చేయి", type="primary"):
+        st.markdown(f"[YouTube Preview](https://youtu.be/{pending_id})")
+        from datetime import datetime, date, time, timedelta
+        from zoneinfo import ZoneInfo
+        india_tz = ZoneInfo("Asia/Kolkata")
+        scheduled_at = st.session_state.get("last_uploaded_video_scheduled_at")
+        if scheduled_at:
+            st.info(f"ఈ వీడియో Schedule అయింది: {scheduled_at} (IST). YouTube సమయానికి Public చేస్తుంది.")
+        publish_mode = st.radio(
+            "ఎప్పుడు Public చేయాలి?",
+            ["వెంటనే Public చేయి", "తేదీ, సమయానికి Schedule చేయి"],
+            horizontal=True,
+            key="youtube_publish_mode",
+        )
+        if publish_mode == "వెంటనే Public చేయి":
+            if st.button("✅ Approve చేసి ఇప్పుడే Public చేయి", type="primary"):
                 try:
                     current = youtube_owner.videos().list(part="status", id=pending_id).execute()
                     if not current.get("items"):
                         st.error("ఈ వీడియోను YouTubeలో కనుగొనలేకపోయాం.")
                     else:
                         status = current["items"][0].get("status", {})
+                        status.pop("publishAt", None)
                         status["privacyStatus"] = "public"
                         youtube_owner.videos().update(part="status", body={"id": pending_id, "status": status}).execute()
                         st.success("నీ Approvalతో వీడియో Public అయింది!")
                         st.session_state["last_uploaded_video_id"] = None
+                        st.session_state["last_uploaded_video_scheduled_at"] = None
                 except Exception as exc:
                     st.error(f"Publish failed: {exc}")
-        with keep_col:
-            if st.button("🔐 Privateగానే ఉంచు"):
-                st.info("వీడియో Privateగానే ఉంటుంది.")
+        else:
+            default_schedule = datetime.now(india_tz) + timedelta(hours=1)
+            schedule_col1, schedule_col2 = st.columns(2)
+            with schedule_col1:
+                schedule_date = st.date_input(
+                    "Public అయ్యే తేదీ",
+                    value=default_schedule.date(),
+                    min_value=date.today(),
+                    key="youtube_schedule_date",
+                )
+            with schedule_col2:
+                schedule_time = st.time_input(
+                    "Public అయ్యే సమయం (IST)",
+                    value=default_schedule.time().replace(second=0, microsecond=0),
+                    key="youtube_schedule_time",
+                )
+            if st.button("🗓️ Approve చేసి Schedule చేయి", type="primary"):
+                try:
+                    publish_datetime = datetime.combine(schedule_date, schedule_time, tzinfo=india_tz)
+                    if publish_datetime <= datetime.now(india_tz) + timedelta(minutes=2):
+                        st.error("దయచేసి కనీసం 2 నిమిషాల తర్వాతి సమయాన్ని ఎంచుకో.")
+                    else:
+                        current = youtube_owner.videos().list(part="status", id=pending_id).execute()
+                        if not current.get("items"):
+                            st.error("ఈ వీడియోను YouTubeలో కనుగొనలేకపోయాం.")
+                        else:
+                            status = current["items"][0].get("status", {})
+                            status["privacyStatus"] = "private"
+                            status["publishAt"] = publish_datetime.isoformat(timespec="seconds")
+                            youtube_owner.videos().update(part="status", body={"id": pending_id, "status": status}).execute()
+                            st.session_state["last_uploaded_video_scheduled_at"] = publish_datetime.strftime("%d-%m-%Y %I:%M %p IST")
+                            st.success("నీ Approvalతో వీడియో Schedule అయింది. YouTube ఎంచుకున్న సమయానికి Public చేస్తుంది.")
+                except Exception as exc:
+                    st.error(f"Schedule failed: {exc}")
+        if st.button("🔐 Privateగానే ఉంచు"):
+            st.info("వీడియో Privateగానే ఉంటుంది. Schedule చేయలేదు.")
 
     st.subheader("📊 వీడియో Analytics")
     analysis_id = st.text_input(
