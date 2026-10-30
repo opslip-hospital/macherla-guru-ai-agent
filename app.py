@@ -1,4 +1,6 @@
 import os
+import io
+import json
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -134,6 +136,239 @@ except requests.HTTPError as e:
     st.error(f"YouTube API error: {e}. Check the API key and YouTube Data API v3 is enabled.")
 except Exception as e:
     st.error(str(e))
+
+
+# YouTube private upload, owner approval, and channel analytics
+st.divider()
+st.header("📤 వీడియో Upload & YouTube Performance")
+st.caption("వీడియోను ముందుగా Privateగా Upload చేసి, నీ Approval తర్వాతే Public చేస్తుంది.")
+
+YT_SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+]
+
+def get_oauth_config():
+    try:
+        cfg = st.secrets.get("youtube_oauth", {})
+        client_id = cfg.get("client_id", "")
+        client_secret = cfg.get("client_secret", "")
+        redirect_uri = cfg.get("redirect_uri", "")
+        if client_id and client_secret and redirect_uri:
+            return {
+                "web": {
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "redirect_uris": [redirect_uri],
+                }
+            }, redirect_uri
+    except Exception:
+        pass
+    return None, None
+
+def get_owner_credentials():
+    from google.oauth2.credentials import Credentials
+    raw = st.session_state.get("youtube_owner_token")
+    if not raw:
+        return None
+    creds = Credentials.from_authorized_user_info(json.loads(raw), YT_SCOPES)
+    if creds.expired and creds.refresh_token:
+        from google.auth.transport.requests import Request
+        creds.refresh(Request())
+        st.session_state["youtube_owner_token"] = creds.to_json()
+    return creds if creds.valid else None
+
+oauth_config, oauth_redirect_uri = get_oauth_config()
+if "youtube_owner_token" not in st.session_state:
+    st.session_state["youtube_owner_token"] = None
+
+# Complete the OAuth callback after the owner returns from Google.
+if oauth_config and st.query_params.get("code") and st.session_state.get("youtube_oauth_state"):
+    try:
+        from google_auth_oauthlib.flow import Flow
+        callback_flow = Flow.from_client_config(
+            oauth_config,
+            scopes=YT_SCOPES,
+            state=st.session_state["youtube_oauth_state"],
+            redirect_uri=oauth_redirect_uri,
+        )
+        callback_flow.fetch_token(code=st.query_params.get("code"))
+        st.session_state["youtube_owner_token"] = callback_flow.credentials.to_json()
+        st.session_state["youtube_oauth_state"] = None
+        st.query_params.clear()
+        st.success("YouTube channel authorization successful.")
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Google authorization could not be completed: {exc}")
+
+owner_creds = None
+try:
+    owner_creds = get_owner_credentials()
+except Exception as exc:
+    st.warning(f"YouTube session needs reconnecting: {exc}")
+
+if not oauth_config:
+    st.info(
+        "Upload setup is not complete yet. In Streamlit → Settings → Secrets, add a "
+        "[youtube_oauth] section with client_id, client_secret and redirect_uri. "
+        "Create a Google OAuth Web application and add the exact Streamlit app URL "
+        "as an authorized redirect URI."
+    )
+elif not owner_creds:
+    from google_auth_oauthlib.flow import Flow
+    if st.button("🔐 Connect my YouTube channel", type="primary"):
+        try:
+            flow = Flow.from_client_config(oauth_config, scopes=YT_SCOPES, redirect_uri=oauth_redirect_uri)
+            auth_url, state = flow.authorization_url(
+                access_type="offline",
+                include_granted_scopes="true",
+                prompt="consent",
+            )
+            st.session_state["youtube_oauth_state"] = state
+            st.link_button("Googleలో అనుమతి ఇవ్వండి", auth_url)
+        except Exception as exc:
+            st.error(f"Could not start Google authorization: {exc}")
+    st.caption("నీ Google accountలో Macherla Guru channel access ఉన్న accountతోనే అనుమతి ఇవ్వాలి.")
+else:
+    st.success("YouTube channel connected for upload and analytics.")
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseUpload
+    youtube_owner = build("youtube", "v3", credentials=owner_creds, cache_discovery=False)
+    analytics_owner = build("youtubeAnalytics", "v2", credentials=owner_creds, cache_discovery=False)
+
+    with st.form("youtube_private_upload_form"):
+        uploaded_video = st.file_uploader("వీడియో ఫైల్ ఎంచుకోండి", type=["mp4", "mov", "avi", "webm"])
+        upload_title = st.text_input("YouTube Title", max_chars=100)
+        upload_description = st.text_area("Description")
+        upload_tags_text = st.text_input("Tags (comma separated)", value="Macherla Guru, Telugu Comedy, PJ Babu")
+        upload_thumbnail = st.file_uploader("Thumbnail (ఐచ్ఛికం)", type=["jpg", "jpeg", "png"])
+        upload_submit = st.form_submit_button("🔒 Privateగా Upload చేయి", type="primary")
+
+    if upload_submit:
+        if not uploaded_video or not upload_title.strip():
+            st.warning("వీడియో ఫైల్ మరియు Title తప్పనిసరి.")
+        else:
+            try:
+                from googleapiclient.errors import HttpError
+                tags = [tag.strip() for tag in upload_tags_text.split(",") if tag.strip()][:500]
+                media = MediaIoBaseUpload(
+                    io.BytesIO(uploaded_video.getvalue()),
+                    mimetype=uploaded_video.type or "video/mp4",
+                    chunksize=8 * 1024 * 1024,
+                    resumable=True,
+                )
+                with st.spinner("YouTubeకి Private వీడియో Upload అవుతోంది..."):
+                    request = youtube_owner.videos().insert(
+                        part="snippet,status",
+                        body={
+                            "snippet": {
+                                "title": upload_title.strip(),
+                                "description": upload_description,
+                                "tags": tags,
+                                "categoryId": "23",
+                            },
+                            "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
+                        },
+                        media_body=media,
+                    )
+                    result = None
+                    while result is None:
+                        _, result = request.next_chunk()
+                new_video_id = result["id"]
+                st.session_state["last_uploaded_video_id"] = new_video_id
+                st.session_state["last_uploaded_video_title"] = upload_title.strip()
+                if upload_thumbnail:
+                    thumb_media = MediaIoBaseUpload(
+                        io.BytesIO(upload_thumbnail.getvalue()),
+                        mimetype=upload_thumbnail.type or "image/jpeg",
+                        resumable=False,
+                    )
+                    youtube_owner.thumbnails().set(videoId=new_video_id, media_body=thumb_media).execute()
+                st.success("వీడియో Privateగా Upload అయింది. నీ Approval వచ్చే వరకు Public కాదు.")
+                st.video(uploaded_video.getvalue())
+                st.markdown(f"[YouTubeలో Private Preview తెరువు](https://youtu.be/{new_video_id})")
+            except Exception as exc:
+                st.error(f"Upload failed: {exc}")
+
+    pending_id = st.session_state.get("last_uploaded_video_id")
+    if pending_id:
+        st.subheader("నీ Approval కోసం")
+        st.write(st.session_state.get("last_uploaded_video_title", "Uploaded video"))
+        st.markdown(f"[Private YouTube Preview](https://youtu.be/{pending_id})")
+        approve_col, keep_col = st.columns(2)
+        with approve_col:
+            if st.button("✅ Approve చేసి Public చేయి", type="primary"):
+                try:
+                    current = youtube_owner.videos().list(part="status", id=pending_id).execute()
+                    if not current.get("items"):
+                        st.error("ఈ వీడియోను YouTubeలో కనుగొనలేకపోయాం.")
+                    else:
+                        status = current["items"][0].get("status", {})
+                        status["privacyStatus"] = "public"
+                        youtube_owner.videos().update(part="status", body={"id": pending_id, "status": status}).execute()
+                        st.success("నీ Approvalతో వీడియో Public అయింది!")
+                        st.session_state["last_uploaded_video_id"] = None
+                except Exception as exc:
+                    st.error(f"Publish failed: {exc}")
+        with keep_col:
+            if st.button("🔐 Privateగానే ఉంచు"):
+                st.info("వీడియో Privateగానే ఉంటుంది.")
+
+    st.subheader("📊 వీడియో Analytics")
+    analysis_id = st.text_input(
+        "YouTube Video ID",
+        value=st.session_state.get("last_uploaded_video_id") or "",
+        help="ఉదా: https://youtu.be/VIDEO_ID లో చివరి భాగం",
+    )
+    from datetime import date, timedelta
+    end_day = date.today() - timedelta(days=2)
+    start_day = end_day - timedelta(days=6)
+    date_col1, date_col2 = st.columns(2)
+    with date_col1:
+        analytics_start = st.date_input("Start date", value=start_day)
+    with date_col2:
+        analytics_end = st.date_input("End date", value=end_day)
+    if st.button("📈 Analytics చూడు"):
+        if not analysis_id.strip():
+            st.warning("ముందుగా Video ID ఇవ్వండి.")
+        elif analytics_end < analytics_start:
+            st.warning("End date, Start date తర్వాత ఉండాలి.")
+        else:
+            try:
+                public_data = youtube_owner.videos().list(part="snippet,statistics,status", id=analysis_id.strip()).execute()
+                if not public_data.get("items"):
+                    st.warning("ఈ Video ID నీ channelలో కనిపించలేదు.")
+                else:
+                    item = public_data["items"][0]
+                    stats = item.get("statistics", {})
+                    a, b, c = st.columns(3)
+                    a.metric("Views", f'{int(stats.get("viewCount", 0)):,}')
+                    b.metric("Likes", f'{int(stats.get("likeCount", 0)):,}')
+                    c.metric("Comments", f'{int(stats.get("commentCount", 0)):,}')
+                    st.write("Privacy:", item.get("status", {}).get("privacyStatus", "unknown"))
+                    report = analytics_owner.reports().query(
+                        ids="channel==MINE",
+                        startDate=analytics_start.isoformat(),
+                        endDate=analytics_end.isoformat(),
+                        metrics="views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,impressions,impressionClickThroughRate",
+                        dimensions="day",
+                        filters=f"video=={analysis_id.strip()}",
+                        sort="day",
+                    ).execute()
+                    headers = [h.get("name") for h in report.get("columnHeaders", [])]
+                    data_rows = report.get("rows", [])
+                    if data_rows:
+                        import pandas as pd
+                        st.caption("YouTube Analytics (processing delay ఉండవచ్చు; recent 1–2 days data ఇంకా అందుబాటులో లేకపోవచ్చు).")
+                        st.dataframe(pd.DataFrame(data_rows, columns=headers), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("ఈ తేదీలకు Analytics data ఇంకా లేదు. వీడియో కొత్తదైతే కొంత సమయం తర్వాత మళ్లీ ప్రయత్నించు.")
+            except Exception as exc:
+                st.warning(f"Analytics data ఇప్పుడందుబాటులో లేదు: {exc}")
+
 
 # Gemini-powered Telugu content studio
 st.divider()
