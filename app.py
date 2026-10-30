@@ -405,55 +405,83 @@ else:
     youtube_owner = build("youtube", "v3", credentials=owner_creds, cache_discovery=False)
     analytics_owner = build("youtubeAnalytics", "v2", credentials=owner_creds, cache_discovery=False)
 
-    # Safely identify and remove an accidental duplicate of the scheduled video.
+    # List recent uploads so the owner can visually identify a duplicate.
+    # Never offer the protected scheduled video for deletion.
     st.subheader("🧹 Duplicate వీడియో గుర్తించి తొలగించు")
-    st.caption("షెడ్యూల్ చేసిన yCAeNqEs3Ao వీడియోను ఎప్పటికీ తొలగించదు. అదే Title ఉన్న మరో వీడియోను మాత్రమే చూపిస్తుంది; Deleteకు ముందు నీ confirmation తప్పనిసరి.")
     protected_video_id = "yCAeNqEs3Ao"
+    st.caption("ఇటీవలి Uploadsలో ఒకేలా ఉన్న వీడియోలను పోల్చి చూడు. షెడ్యూల్ వీడియో yCAeNqEs3Ao Delete జాబితాలో ఎప్పటికీ ఉండదు.")
     try:
         protected_result = youtube_owner.videos().list(
             part="snippet,status", id=protected_video_id
         ).execute()
         protected_items = protected_result.get("items", [])
-        if protected_items:
+        if not protected_items:
+            st.warning("రక్షిత షెడ్యూల్ వీడియో yCAeNqEs3Ao కనిపించలేదు. భద్రత కోసం Delete ఎంపికలు నిలిపివేశాం.")
+        else:
             protected_title = protected_items[0].get("snippet", {}).get("title", "")
             mine = youtube_owner.channels().list(part="contentDetails", mine=True).execute()
             mine_items = mine.get("items", [])
             uploads_id = (mine_items[0].get("contentDetails", {})
                           .get("relatedPlaylists", {}).get("uploads")) if mine_items else None
-            duplicate_candidates = []
-            if uploads_id and protected_title:
+            recent_videos = []
+            if uploads_id:
                 playlist = youtube_owner.playlistItems().list(
-                    part="contentDetails", playlistId=uploads_id, maxResults=50
+                    part="snippet,contentDetails", playlistId=uploads_id, maxResults=50
                 ).execute()
-                owned_ids = [
+                recent_ids = [
                     x.get("contentDetails", {}).get("videoId")
                     for x in playlist.get("items", [])
                     if x.get("contentDetails", {}).get("videoId")
                 ]
-                for offset in range(0, len(owned_ids), 50):
-                    batch = owned_ids[offset:offset + 50]
+                for offset in range(0, len(recent_ids), 50):
+                    batch = recent_ids[offset:offset + 50]
                     details = youtube_owner.videos().list(
                         part="snippet,status", id=",".join(batch)
                     ).execute()
-                    for video in details.get("items", []):
-                        vid = video.get("id")
-                        title = video.get("snippet", {}).get("title", "")
-                        if vid != protected_video_id and title == protected_title:
-                            duplicate_candidates.append({
-                                "id": vid,
-                                "title": title,
-                                "privacy": video.get("status", {}).get("privacyStatus", "unknown"),
-                                "publish_at": video.get("status", {}).get("publishAt", ""),
-                            })
-            if duplicate_candidates:
-                st.warning(f"షెడ్యూల్ వీడియో Titleతో సరిపోలిన మరో {len(duplicate_candidates)} వీడియో(లు) దొరికాయి.")
-                options = {f'{x["id"]} — {x["privacy"]}': x for x in duplicate_candidates}
-                chosen_label = st.selectbox("తొలగించాల్సిన Duplicate Video ID ఎంచుకో", list(options.keys()), key="duplicate_video_choice")
-                chosen = options[chosen_label]
-                st.write("**ఉంచాల్సిన వీడియో:**", protected_video_id, "—", protected_title)
-                st.write("**తొలగించడానికి ఎంచుకున్నది:**", chosen["id"])
-                confirm_delete = st.checkbox("అవును, ఎంచుకున్న Duplicate వీడియోను శాశ్వతంగా Delete చేయడానికి అంగీకరిస్తున్నాను", key="confirm_duplicate_delete")
-                if st.button("🗑️ Confirm చేసి Duplicate మాత్రమే Delete చేయి", type="secondary", disabled=not confirm_delete):
+                    recent_videos.extend(details.get("items", []))
+            candidates = []
+            for video in recent_videos:
+                vid = video.get("id")
+                if not vid or vid == protected_video_id:
+                    continue
+                snippet = video.get("snippet", {})
+                status = video.get("status", {})
+                candidates.append({
+                    "id": vid,
+                    "title": snippet.get("title", "(Title లేదు)"),
+                    "published": snippet.get("publishedAt", ""),
+                    "privacy": status.get("privacyStatus", "unknown"),
+                    "publish_at": status.get("publishAt", ""),
+                })
+            st.write("**రక్షితంగా ఉంచాల్సిన వీడియో:**", protected_video_id, "—", protected_title)
+            if candidates:
+                st.write(f"ఇటీవలి {len(candidates)} వీడియోలు (రక్షిత వీడియో మినహా):")
+                for item in candidates[:20]:
+                    st.markdown(
+                        f'- [{item["title"]}](https://youtu.be/{item["id"]}) — '
+                        f'ID: `{item["id"]}` — {item["privacy"]} — {item["published"][:10]}'
+                    )
+                st.caption("రెండు వీడియోల Previewలు తెరిచి, ఏది అదనపు కాపీ అనేది చూసి ఎంచుకో.")
+                labels = {
+                    f'{x["id"]} — {x["title"][:65]} — {x["privacy"]}': x
+                    for x in candidates
+                }
+                chosen_label = st.selectbox(
+                    "తొలగించాల్సిన Duplicate వీడియోను ఎంచుకో",
+                    list(labels.keys()),
+                    key="duplicate_video_choice",
+                )
+                chosen = labels[chosen_label]
+                st.markdown(f'[ఎంచుకున్న వీడియో Preview తెరువు](https://youtu.be/{chosen["id"]})')
+                confirm_delete = st.checkbox(
+                    "ఇది Duplicate అని Preview చూసి నిర్ధారించాను; ఈ వీడియోను శాశ్వతంగా Delete చేయడానికి అంగీకరిస్తున్నాను",
+                    key="confirm_duplicate_delete",
+                )
+                if st.button(
+                    "🗑️ Confirm చేసి ఎంచుకున్న Duplicate మాత్రమే Delete చేయి",
+                    type="secondary",
+                    disabled=not confirm_delete,
+                ):
                     if chosen["id"] == protected_video_id:
                         st.error("భద్రతా కారణంగా షెడ్యూల్ వీడియోను Delete చేయడం నిరోధించబడింది.")
                     else:
@@ -464,11 +492,9 @@ else:
                         except Exception as delete_exc:
                             st.error(f"Duplicate Delete కాలేదు: {delete_exc}")
             else:
-                st.info("ఇప్పటికి షెడ్యూల్ వీడియోతో అచ్చంగా ఒకే Title ఉన్న మరో Upload కనిపించలేదు. ఏ వీడియోనూ Delete చేయలేదు.")
-        else:
-            st.warning("రక్షించాల్సిన షెడ్యూల్ వీడియో yCAeNqEs3Ao ఈ Channelలో కనిపించలేదు. భద్రత కోసం Duplicate Delete చర్య నిలిపివేశాం.")
+                st.info("ఇటీవలి Uploadsలో చూపించడానికి వీడియోలు లేవు. ఏదీ Delete చేయలేదు.")
     except Exception as duplicate_exc:
-        st.error(f"Duplicate వీడియోలను తనిఖీ చేయలేకపోయాం: {duplicate_exc}")
+        st.error(f"ఇటీవలి వీడియోలను తనిఖీ చేయలేకపోయాం: {duplicate_exc}")
 
 
     st.subheader("🎬 ఒక్క వీడియో ఇవ్వు — మిగతావన్నీ Gemini సిద్ధం చేస్తుంది")
