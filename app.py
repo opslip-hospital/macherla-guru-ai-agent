@@ -473,10 +473,23 @@ else:
                 generated_text = "\\n".join(text_parts).strip()
                 if not generated_text:
                     raise RuntimeError("Gemini నుంచి వివరాలు రాలేదు. API response: " + json.dumps(gen_data, ensure_ascii=False)[:700])
-                generated_text = generated_text.replace("```json", "").replace("```", "").strip()
+                generated_text = generated_text.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+                # Gemini may occasionally wrap the requested object in a one-item
+                # array or a named envelope. Normalize these safe response shapes.
                 metadata = json.loads(generated_text)
+                if isinstance(metadata, list):
+                    metadata = next((item for item in metadata if isinstance(item, dict)), None)
+                if isinstance(metadata, dict):
+                    for wrapper_key in ("metadata", "result", "data", "output"):
+                        wrapped = metadata.get(wrapper_key)
+                        if isinstance(wrapped, dict):
+                            metadata = wrapped
+                            break
                 if not isinstance(metadata, dict):
-                    raise RuntimeError("Gemini metadata object బదులుగా వేరే format ఇచ్చింది. మళ్లీ Generate చేయి.")
+                    raise RuntimeError(
+                        "Gemini సమాధానం JSON object రూపంలో రాలేదు. Generate మళ్లీ నొక్కి ప్రయత్నించు. "
+                        "వివరాలు ఇంకా రాకపోతే Gemini API response format తనిఖీ చేయాలి."
+                    )
                 for field in ["title", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption"]:
                     metadata.setdefault(field, [] if field in ["tags", "hashtags"] else "")
                 if not isinstance(metadata.get("tags"), list):
