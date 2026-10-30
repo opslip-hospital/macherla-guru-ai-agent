@@ -482,19 +482,31 @@ else:
                         "Do not add text, letters, captions, logos or watermarks. "
                         "Return an image, not a written prompt."
                     )
-                    thumb_response = requests.post(
-                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
-                        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                        json={
-                            "contents": [{"parts": [
-                                {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
-                                {"text": thumb_prompt},
-                            ]}],
-                            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
-                        },
-                        timeout=240,
-                    )
-                    thumb_response.raise_for_status()
+                    thumb_response = None
+                    thumb_data = {}
+                    # Retry transient image-model rate limits with exponential backoff.
+                    for thumb_attempt in range(3):
+                        thumb_response = requests.post(
+                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+                            headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                            json={
+                                "contents": [{"parts": [
+                                    {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                                    {"text": thumb_prompt},
+                                ]}],
+                                "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                            },
+                            timeout=240,
+                        )
+                        if thumb_response.status_code not in (429, 500, 502, 503, 504) or thumb_attempt == 2:
+                            break
+                        time.sleep(2 ** (thumb_attempt + 1))
+                    if not thumb_response.ok:
+                        try:
+                            thumb_error = thumb_response.json().get("error", {}).get("message", thumb_response.text)
+                        except Exception:
+                            thumb_error = thumb_response.text
+                        raise RuntimeError(f"Gemini Image API ({thumb_response.status_code}): {thumb_error}")
                     thumb_data = thumb_response.json()
                     generated_image = None
                     for thumb_candidate in thumb_data.get("candidates", []):
