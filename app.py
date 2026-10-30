@@ -360,17 +360,116 @@ else:
     youtube_owner = build("youtube", "v3", credentials=owner_creds, cache_discovery=False)
     analytics_owner = build("youtubeAnalytics", "v2", credentials=owner_creds, cache_discovery=False)
 
+    st.subheader("🎬 ఒక్క వీడియో ఇవ్వు — మిగతావన్నీ Gemini సిద్ధం చేస్తుంది")
+    uploaded_video = st.file_uploader("నీ వీడియో ఎంచుకోండి", type=["mp4", "mov", "avi", "webm"], key="source_video_for_ai")
+    if uploaded_video and GEMINI_KEY:
+        if st.button("✨ ఈ వీడియో చూసి Title, SEO, Tags, Captions తయారు చేయి", type="primary):
+            try:
+                video_bytes = uploaded_video.getvalue()
+                mime_type = uploaded_video.type or "video/mp4"
+                start = requests.post(
+                    "https://generativelanguage.googleapis.com/upload/v1beta/files",
+                    headers={
+                        "x-goog-api-key": GEMINI_KEY,
+                        "X-Goog-Upload-Protocol": "resumable",
+                        "X-Goog-Upload-Command": "start",
+                        "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
+                        "X-Goog-Upload-Header-Content-Type": mime_type,
+                        "Content-Type": "application/json",
+                    },
+                    json={"file": {"display_name": uploaded_video.name}},
+                    timeout=60,
+                )
+                start.raise_for_status()
+                upload_url = start.headers.get("X-Goog-Upload-URL")
+                if not upload_url:
+                    raise RuntimeError("Gemini video upload URL రాలేదు.")
+                finish = requests.post(
+                    upload_url,
+                    headers={
+                        "X-Goog-Upload-Offset": "0",
+                        "X-Goog-Upload-Command": "upload, finalize",
+                        "Content-Length": str(len(video_bytes)),
+                    },
+                    data=video_bytes,
+                    timeout=300,
+                )
+                finish.raise_for_status()
+                file_info = finish.json().get("file", finish.json())
+                file_uri = file_info.get("uri")
+                file_state = file_info.get("state", "PROCESSING")
+                if not file_uri:
+                    raise RuntimeError("Gemini వీడియో ఫైల్ URI రాలేదు.")
+                import time
+                for _ in range(30):
+                    if file_state == "ACTIVE":
+                        break
+                    time.sleep(2)
+                    check = requests.get(
+                        "https://generativelanguage.googleapis.com/v1beta/" + file_info.get("name", ""),
+                        headers={"x-goog-api-key": GEMINI_KEY},
+                        timeout=30,
+                    )
+                    check.raise_for_status()
+                    file_info = check.json()
+                    file_state = file_info.get("state", "")
+                if file_state != "ACTIVE":
+                    raise RuntimeError("Gemini వీడియోను ఇంకా ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
+                ai_prompt = """Watch the supplied video carefully and create ready-to-use YouTube publishing metadata for Macherla Guru, a Telugu AI entertainment channel. Infer the actual subject, characters, actions, spoken language and mood from the video. Do not invent events, people, dialogue or claims not visible/audible. Return ONLY valid JSON with keys: title (catchy Telugu title, max 100 chars), description (natural Telugu description with a short CTA), tags (array of 12-18 relevant tags), hashtags (array of exactly 5 relevant hashtags), thumbnail_prompt (detailed 9:16 or 16:9 choice based on video, cinematic thumbnail prompt showing only actual video characters, no text), instagram_caption (curiosity hook plus exactly 5 hashtags), youtube_caption (curiosity hook plus exactly 5 hashtags), category (short label), keywords (array). Keep title and descriptions accurate to this video."""
+                gen = requests.post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+                    headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [
+                            {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                            {"text": ai_prompt},
+                        ]}],
+                        "generationConfig": {"temperature": 0.45, "responseMimeType": "application/json"},
+                    },
+                    timeout=240,
+                )
+                gen.raise_for_status()
+                gen_data = gen.json()
+                generated_text = "".join(
+                    part.get("text", "")
+                    for cand in gen_data.get("candidates", [])
+                    for part in cand.get("content", {}).get("parts", [])
+                ).strip()
+                metadata = json.loads(generated_text)
+                st.session_state["ai_video_metadata"] = metadata
+                st.session_state["ai_video_description"] = metadata.get("description", "")
+                st.session_state["ai_video_title"] = metadata.get("title", "")[:100]
+                st.session_state["ai_video_tags"] = ", ".join(metadata.get("tags", []))
+                st.success("వీడియో చూసి నీకు కావాల్సిన వివరాలు Gemini సిద్ధం చేసింది. Upload ముందు Review చేయి.")
+            except Exception as exc:
+                st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
+    elif uploaded_video and not GEMINI_KEY:
+        st.warning("Gemini API key లేదు. Streamlit Secretsలో GEMINI_API_KEY తనిఖీ చేయి.")
+
+    metadata = st.session_state.get("ai_video_metadata", {})
+    if metadata:
+        st.markdown("#### ✨ Gemini తయారు చేసిన వివరాలు — Review చేయి")
+        st.text_input("YouTube Title", key="ai_video_title", max_chars=100)
+        st.text_area("Description", key="ai_video_description", height=140)
+        st.text_input("Tags (comma separated)", key="ai_video_tags")
+        st.write("**Hashtags:** " + " ".join(metadata.get("hashtags", [])))
+        st.write("**Thumbnail Prompt:**")
+        st.write(metadata.get("thumbnail_prompt", ""))
+        st.write("**Instagram Caption:**")
+        st.write(metadata.get("instagram_caption", ""))
+        st.write("**YouTube Caption:**")
+        st.write(metadata.get("youtube_caption", ""))
+
     with st.form("youtube_private_upload_form"):
-        uploaded_video = st.file_uploader("వీడియో ఫైల్ ఎంచుకోండి", type=["mp4", "mov", "avi", "webm"])
-        upload_title = st.text_input("YouTube Title", max_chars=100)
-        upload_description = st.text_area("Description")
-        upload_tags_text = st.text_input("Tags (comma separated)", value="Macherla Guru, Telugu Comedy, PJ Babu")
-        upload_thumbnail = st.file_uploader("Thumbnail (ఐచ్ఛికం)", type=["jpg", "jpeg", "png"])
-        upload_submit = st.form_submit_button("🔒 Privateగా Upload చేయి", type="primary")
+        upload_thumbnail = st.file_uploader("Thumbnail image (ఐచ్ఛికం)", type=["jpg", "jpeg", "png"])
+        upload_submit = st.form_submit_button("🔒 Review చేసిన వివరాలతో Privateగా Upload చేయి", type="primary")
 
     if upload_submit:
-        if not uploaded_video or not upload_title.strip():
-            st.warning("వీడియో ఫైల్ మరియు Title తప్పనిసరి.")
+        upload_title = st.session_state.get("ai_video_title", "").strip()
+        upload_description = st.session_state.get("ai_video_description", "")
+        upload_tags_text = st.session_state.get("ai_video_tags", "")
+        if not uploaded_video or not upload_title:
+            st.warning("ముందుగా వీడియో ఎంచుకుని Geminiతో వివరాలు తయారు చేయి.")
         else:
             try:
                 from googleapiclient.errors import HttpError
