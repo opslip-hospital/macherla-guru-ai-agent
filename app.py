@@ -386,7 +386,7 @@ else:
                         ids="channel==MINE",
                         startDate=analytics_start.isoformat(),
                         endDate=analytics_end.isoformat(),
-                        metrics="views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,impressions,impressionClickThroughRate",
+                        metrics="views,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,shares,subscribersGained,subscribersLost",
                         dimensions="day",
                         filters=f"video=={analysis_id.strip()}",
                         sort="day",
@@ -395,7 +395,7 @@ else:
                     data_rows = report.get("rows", [])
                     if data_rows:
                         import pandas as pd
-                        st.caption("YouTube Analytics (processing delay ఉండవచ్చు; recent 1–2 days data ఇంకా అందుబాటులో లేకపోవచ్చు).")
+                        st.caption("YouTube Analytics: Views, watch time, average view duration, average view %, likes, comments, shares, subscribers gained/lost. Recent 1–2 days data may be delayed. Thumbnail impressions/CTR are not available through this targeted Analytics query.")
                         st.dataframe(pd.DataFrame(data_rows, columns=headers), use_container_width=True, hide_index=True)
                     else:
                         st.info("ఈ తేదీలకు Analytics data ఇంకా లేదు. వీడియో కొత్తదైతే కొంత సమయం తర్వాత మళ్లీ ప్రయత్నించు.")
