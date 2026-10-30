@@ -320,7 +320,19 @@ if oauth_config and st.query_params.get("code"):
         st.success("YouTube channel authorization successful.")
         st.rerun()
     except Exception as exc:
-        st.error(f"Google authorization could not be completed: {exc}")
+        # Google authorization codes are single-use and short-lived. If a stale
+        # callback URL is replayed after a successful connection, clear it so
+        # Streamlit reruns do not keep showing the same invalid_grant error.
+        callback_error = str(exc)
+        st.query_params.clear()
+        if "invalid_grant" in callback_error:
+            st.warning(
+                "పాత Google authorization callback మళ్లీ వచ్చింది (invalid_grant). "
+                "దాన్ని క్లియర్ చేశాం. ఇప్పటికే సేవ్ అయిన YouTube session ఉంటే దానినే కొనసాగిస్తాం; "
+                "కనెక్షన్ లేకపోతే Connect my YouTube channel ద్వారా మళ్లీ అనుమతి ఇవ్వు."
+            )
+        else:
+            st.error(f"Google authorization could not be completed: {exc}")
 
 owner_creds = None
 try:
