@@ -718,11 +718,35 @@ else:
                     key="youtube_schedule_date",
                 )
             with schedule_col2:
-                schedule_time = st.time_input(
-                    "Public అయ్యే సమయం (IST)",
-                    value=default_schedule.time().replace(second=0, microsecond=0),
-                    key="youtube_schedule_time",
-                )
+                st.markdown("**Public అయ్యే సమయం (IST)**")
+                default_clock = default_schedule.time()
+                default_hour_12 = default_clock.hour % 12 or 12
+                default_ampm = "PM" if default_clock.hour >= 12 else "AM"
+                hour_col, minute_col, ampm_col = st.columns([1, 1, 1])
+                with hour_col:
+                    schedule_hour_12 = st.selectbox(
+                        "Hour",
+                        options=list(range(1, 13)),
+                        index=default_hour_12 - 1,
+                        key="youtube_schedule_hour_12",
+                    )
+                with minute_col:
+                    schedule_minute = st.selectbox(
+                        "Minute",
+                        options=list(range(60)),
+                        index=default_clock.minute,
+                        format_func=lambda minute: f"{minute:02d}",
+                        key="youtube_schedule_minute",
+                    )
+                with ampm_col:
+                    schedule_ampm = st.selectbox(
+                        "AM / PM",
+                        options=["AM", "PM"],
+                        index=0 if default_ampm == "AM" else 1,
+                        key="youtube_schedule_ampm",
+                    )
+            hour_24 = (schedule_hour_12 % 12) + (12 if schedule_ampm == "PM" else 0)
+            schedule_time = time(hour_24, schedule_minute)
             if st.button("🗓️ Approve చేసి Schedule చేయి", type="primary"):
                 try:
                     publish_datetime = datetime.combine(schedule_date, schedule_time, tzinfo=india_tz)
