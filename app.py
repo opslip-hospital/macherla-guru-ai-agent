@@ -643,6 +643,13 @@ else:
                 st.error(f"Upload failed: {exc}")
 
     pending_id = st.session_state.get("last_uploaded_video_id")
+    if not pending_id:
+        pending_id = st.text_input(
+            "ఇప్పటికే YouTubeలో Privateగా ఉన్న వీడియో ID (మళ్లీ Upload అవసరం లేదు)",
+            value="",
+            key="manual_pending_video_id",
+            help="ఉదా: yCAeNqEs3Ao — Private వీడియోను Review చేసి Schedule చేయడానికి.",
+        ).strip()
     if pending_id:
         st.subheader("నీ Approval కోసం")
         st.write(st.session_state.get("last_uploaded_video_title", "Uploaded video"))
