@@ -108,7 +108,11 @@ try:
 
             rows = sorted(rows_by_id.values(), key=lambda row: row["Views"], reverse=True)
             if rows:
-                st.dataframe(rows, use_container_width=True, hide_index=True)
+                st.success(f"Loaded {len(rows)} recent uploads. Showing the top 20 by views.")
+                # A simple static table is easier to see on mobile than the interactive grid.
+                st.table(rows[:20])
+                with st.expander("Open interactive video table"):
+                    st.dataframe(rows, use_container_width=True, hide_index=True)
                 import pandas as pd
                 st.download_button(
                     "Download video report CSV",
