@@ -405,6 +405,72 @@ else:
     youtube_owner = build("youtube", "v3", credentials=owner_creds, cache_discovery=False)
     analytics_owner = build("youtubeAnalytics", "v2", credentials=owner_creds, cache_discovery=False)
 
+    # Safely identify and remove an accidental duplicate of the scheduled video.
+    st.subheader("🧹 Duplicate వీడియో గుర్తించి తొలగించు")
+    st.caption("షెడ్యూల్ చేసిన yCAeNqEs3Ao వీడియోను ఎప్పటికీ తొలగించదు. అదే Title ఉన్న మరో వీడియోను మాత్రమే చూపిస్తుంది; Deleteకు ముందు నీ confirmation తప్పనిసరి.")
+    protected_video_id = "yCAeNqEs3Ao"
+    try:
+        protected_result = youtube_owner.videos().list(
+            part="snippet,status", id=protected_video_id
+        ).execute()
+        protected_items = protected_result.get("items", [])
+        if protected_items:
+            protected_title = protected_items[0].get("snippet", {}).get("title", "")
+            mine = youtube_owner.channels().list(part="contentDetails", mine=True).execute()
+            mine_items = mine.get("items", [])
+            uploads_id = (mine_items[0].get("contentDetails", {})
+                          .get("relatedPlaylists", {}).get("uploads")) if mine_items else None
+            duplicate_candidates = []
+            if uploads_id and protected_title:
+                playlist = youtube_owner.playlistItems().list(
+                    part="contentDetails", playlistId=uploads_id, maxResults=50
+                ).execute()
+                owned_ids = [
+                    x.get("contentDetails", {}).get("videoId")
+                    for x in playlist.get("items", [])
+                    if x.get("contentDetails", {}).get("videoId")
+                ]
+                for offset in range(0, len(owned_ids), 50):
+                    batch = owned_ids[offset:offset + 50]
+                    details = youtube_owner.videos().list(
+                        part="snippet,status", id=",".join(batch)
+                    ).execute()
+                    for video in details.get("items", []):
+                        vid = video.get("id")
+                        title = video.get("snippet", {}).get("title", "")
+                        if vid != protected_video_id and title == protected_title:
+                            duplicate_candidates.append({
+                                "id": vid,
+                                "title": title,
+                                "privacy": video.get("status", {}).get("privacyStatus", "unknown"),
+                                "publish_at": video.get("status", {}).get("publishAt", ""),
+                            })
+            if duplicate_candidates:
+                st.warning(f"షెడ్యూల్ వీడియో Titleతో సరిపోలిన మరో {len(duplicate_candidates)} వీడియో(లు) దొరికాయి.")
+                options = {f'{x["id"]} — {x["privacy"]}': x for x in duplicate_candidates}
+                chosen_label = st.selectbox("తొలగించాల్సిన Duplicate Video ID ఎంచుకో", list(options.keys()), key="duplicate_video_choice")
+                chosen = options[chosen_label]
+                st.write("**ఉంచాల్సిన వీడియో:**", protected_video_id, "—", protected_title)
+                st.write("**తొలగించడానికి ఎంచుకున్నది:**", chosen["id"])
+                confirm_delete = st.checkbox("అవును, ఎంచుకున్న Duplicate వీడియోను శాశ్వతంగా Delete చేయడానికి అంగీకరిస్తున్నాను", key="confirm_duplicate_delete")
+                if st.button("🗑️ Confirm చేసి Duplicate మాత్రమే Delete చేయి", type="secondary", disabled=not confirm_delete):
+                    if chosen["id"] == protected_video_id:
+                        st.error("భద్రతా కారణంగా షెడ్యూల్ వీడియోను Delete చేయడం నిరోధించబడింది.")
+                    else:
+                        try:
+                            youtube_owner.videos().delete(id=chosen["id"]).execute()
+                            st.success(f'Duplicate వీడియో {chosen["id"]} Delete అయింది. షెడ్యూల్ వీడియో {protected_video_id} అలాగే ఉంది.')
+                            st.rerun()
+                        except Exception as delete_exc:
+                            st.error(f"Duplicate Delete కాలేదు: {delete_exc}")
+            else:
+                st.info("ఇప్పటికి షెడ్యూల్ వీడియోతో అచ్చంగా ఒకే Title ఉన్న మరో Upload కనిపించలేదు. ఏ వీడియోనూ Delete చేయలేదు.")
+        else:
+            st.warning("రక్షించాల్సిన షెడ్యూల్ వీడియో yCAeNqEs3Ao ఈ Channelలో కనిపించలేదు. భద్రత కోసం Duplicate Delete చర్య నిలిపివేశాం.")
+    except Exception as duplicate_exc:
+        st.error(f"Duplicate వీడియోలను తనిఖీ చేయలేకపోయాం: {duplicate_exc}")
+
+
     st.subheader("🎬 ఒక్క వీడియో ఇవ్వు — మిగతావన్నీ Gemini సిద్ధం చేస్తుంది")
     uploaded_video = st.file_uploader("నీ వీడియో ఎంచుకోండి", type=["mp4", "mov", "avi", "webm"], key="source_video_for_ai")
     if uploaded_video and GEMINI_KEY:
