@@ -146,6 +146,7 @@ st.caption("వీడియోను ముందుగా Privateగా Upload 
 YT_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/youtube.force-ssl",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
 
@@ -353,6 +354,25 @@ elif not owner_creds:
     st.caption("నీ Google accountలో Macherla Guru channel access ఉన్న accountతోనే అనుమతి ఇవ్వాలి.")
 else:
     st.success("YouTube channel connected for upload and analytics.")
+    st.info("Schedule/Publish permission update: Googleలో YouTube channel‌ను మళ్లీ authorize చేయాలి.")
+    from google_auth_oauthlib.flow import Flow
+    if st.button("🔄 Schedule Permission కోసం Googleను మళ్లీ Connect చేయి"):
+        try:
+            reauth_flow = Flow.from_client_config(
+                oauth_config, scopes=YT_SCOPES, redirect_uri=oauth_redirect_uri
+            )
+            reauth_flow.code_verifier = secrets.token_urlsafe(64)
+            reauth_state = make_oauth_state(reauth_flow.code_verifier)
+            reauth_url, _ = reauth_flow.authorization_url(
+                access_type="offline",
+                include_granted_scopes="true",
+                prompt="consent",
+                state=reauth_state,
+            )
+            st.link_button("Googleలో కొత్త అనుమతులు ఇవ్వండి", reauth_url)
+            st.caption("అదే Macherla Guru channel ఉన్న Google account ఎంచుకుని అన్ని permissions Allow చేయి.")
+        except Exception as exc:
+            st.error(f"Could not start YouTube re-authorization: {exc}")
     if not get_supabase_config():
         st.warning("Persistent login is not configured yet. Add [supabase] url and secret_key in Streamlit Secrets; the OAuth token will then be encrypted and stored outside the app session.")
     from googleapiclient.discovery import build
