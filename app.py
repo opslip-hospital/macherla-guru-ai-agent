@@ -734,11 +734,48 @@ else:
                             st.error("ఈ వీడియోను YouTubeలో కనుగొనలేకపోయాం.")
                         else:
                             status = current["items"][0].get("status", {})
-                            status["privacyStatus"] = "private"
-                            status["publishAt"] = publish_datetime.isoformat(timespec="seconds")
-                            youtube_owner.videos().update(part="status", body={"id": pending_id, "status": status}).execute()
-                            st.session_state["last_uploaded_video_scheduled_at"] = publish_datetime.strftime("%d-%m-%Y %I:%M %p IST")
-                            st.success("నీ Approvalతో వీడియో Schedule అయింది. YouTube ఎంచుకున్న సమయానికి Public చేస్తుంది.")
+                            # YouTube only accepts publishAt for a video that is
+                            # still private and has never been published.
+                            if status.get("privacyStatus") == "public":
+                                st.error("ఈ వీడియో ఇప్పటికే Public అయింది. Schedule చేయలేం.")
+                            elif status.get("uploadStatus") not in (None, "processed"):
+                                st.error(f"వీడియో ఇంకా processingలో ఉంది (uploadStatus: {status.get('uploadStatus')}). Processing పూర్తయ్యాక మళ్లీ ప్రయత్నించు.")
+                            else:
+                                status["privacyStatus"] = "private"
+                                status["publishAt"] = publish_datetime.isoformat(timespec="seconds")
+                                update_result = youtube_owner.videos().update(
+                                    part="status",
+                                    body={"id": pending_id, "status": status}
+                                ).execute()
+
+                                # Read the video back from YouTube. Never show
+                                # success based only on the update request returning.
+                                verified = youtube_owner.videos().list(
+                                    part="status,snippet",
+                                    id=pending_id
+                                ).execute()
+                                verified_items = verified.get("items", [])
+                                verified_status = verified_items[0].get("status", {}) if verified_items else {}
+                                verified_publish_at = verified_status.get("publishAt")
+                                if (
+                                    verified_items
+                                    and verified_status.get("privacyStatus") == "private"
+                                    and verified_publish_at
+                                ):
+                                    st.session_state["last_uploaded_video_scheduled_at"] = verified_publish_at
+                                    st.success(
+                                        "✅ YouTube Schedule నిర్ధారించింది. "
+                                        f"Publish time: {verified_publish_at}. "
+                                        "YouTube Studioలో Visibility → Scheduledగా కనిపించాలి."
+                                    )
+                                else:
+                                    st.session_state["last_uploaded_video_scheduled_at"] = None
+                                    st.error(
+                                        "YouTube Scheduleని నిర్ధారించలేదు. వీడియో ఇంకా "
+                                        f"{verified_status.get('privacyStatus', 'తెలియని status')}గానే ఉంది. "
+                                        f"publishAt: {verified_publish_at or 'లేదు'}. "
+                                        "YouTube API update responseలో వచ్చిన statusను మళ్లీ తనిఖీ చేయాలి."
+                                    )
                 except Exception as exc:
                     st.error(f"Schedule failed: {exc}")
         if st.button("🔐 Privateగానే ఉంచు"):
