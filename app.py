@@ -541,4 +541,4 @@ Return clean headings and ready-to-use output.
             except requests.RequestException as exc:
                 st.error(f"Network error: {exc}")
 
-st.caption("Privacy: API keys must be stored as deployment secrets, never committed to GitHub. This starter dashboard reads public channel/video data only; private YouTube Analytics requires a separate OAuth authorization.")
+st.caption("Privacy: API keys and OAuth client credentials are stored only in deployment secrets, never in GitHub. Private YouTube Analytics and uploads use the channel owner OAuth connection. Until secure persistent token storage is configured, refreshing or restarting this app may require reconnecting the channel.")
