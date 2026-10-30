@@ -185,21 +185,42 @@ oauth_config, oauth_redirect_uri = get_oauth_config()
 if "youtube_owner_token" not in st.session_state:
     st.session_state["youtube_owner_token"] = None
 
-# Complete the OAuth callback after the owner returns from Google.
-if oauth_config and st.query_params.get("code") and st.session_state.get("youtube_oauth_state"):
+# Use a signed OAuth state so the callback remains verifiable even if
+# Google's redirect creates a fresh Streamlit browser session.
+import hashlib
+import hmac
+import secrets
+
+def make_oauth_state():
+    nonce = secrets.token_urlsafe(24)
+    secret = oauth_config["web"]["client_secret"].encode("utf-8")
+    signature = hmac.new(secret, nonce.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{nonce}.{signature}"
+
+def verify_oauth_state(state):
     try:
-        if st.query_params.get("state") != st.session_state["youtube_oauth_state"]:
-            raise ValueError("OAuth state mismatch. Start the YouTube connection again.")
+        nonce, signature = state.rsplit(".", 1)
+        secret = oauth_config["web"]["client_secret"].encode("utf-8")
+        expected = hmac.new(secret, nonce.encode("utf-8"), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature, expected)
+    except Exception:
+        return False
+
+# Complete the OAuth callback after the owner returns from Google.
+if oauth_config and st.query_params.get("code"):
+    try:
+        returned_state = st.query_params.get("state", "")
+        if not verify_oauth_state(returned_state):
+            raise ValueError("OAuth state validation failed. Please connect YouTube again.")
         from google_auth_oauthlib.flow import Flow
         callback_flow = Flow.from_client_config(
             oauth_config,
             scopes=YT_SCOPES,
-            state=st.session_state["youtube_oauth_state"],
+            state=returned_state,
             redirect_uri=oauth_redirect_uri,
         )
         callback_flow.fetch_token(code=st.query_params.get("code"))
         st.session_state["youtube_owner_token"] = callback_flow.credentials.to_json()
-        st.session_state["youtube_oauth_state"] = None
         st.query_params.clear()
         st.success("YouTube channel authorization successful.")
         st.rerun()
@@ -224,12 +245,13 @@ elif not owner_creds:
     if st.button("🔐 Connect my YouTube channel", type="primary"):
         try:
             flow = Flow.from_client_config(oauth_config, scopes=YT_SCOPES, redirect_uri=oauth_redirect_uri)
-            auth_url, state = flow.authorization_url(
+            signed_state = make_oauth_state()
+            auth_url, _ = flow.authorization_url(
                 access_type="offline",
                 include_granted_scopes="true",
                 prompt="consent",
+                state=signed_state,
             )
-            st.session_state["youtube_oauth_state"] = state
             st.link_button("Googleలో అనుమతి ఇవ్వండి", auth_url)
         except Exception as exc:
             st.error(f"Could not start Google authorization: {exc}")
