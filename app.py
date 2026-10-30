@@ -4,9 +4,17 @@ import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
-API_KEY = os.getenv("YOUTUBE_API_KEY", "")
-HANDLE = os.getenv("YOUTUBE_HANDLE", "@macherlaguru")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+
+# Streamlit Community Cloud secrets first; local environment variables as fallback.
+try:
+    API_KEY = st.secrets.get("YOUTUBE_API_KEY", os.getenv("YOUTUBE_API_KEY", ""))
+    HANDLE = st.secrets.get("YOUTUBE_HANDLE", os.getenv("YOUTUBE_HANDLE", "@macherlaguru"))
+    GEMINI_KEY = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+except Exception:
+    API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+    HANDLE = os.getenv("YOUTUBE_HANDLE", "@macherlaguru")
+    GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+
 BASE = "https://www.googleapis.com/youtube/v3"
 
 st.set_page_config(page_title="Macherla Guru AI Manager", page_icon="🎬", layout="wide")
@@ -30,7 +38,7 @@ def load_channel():
     return items[0]
 
 if not api_key:
-    st.info("Setup needed: add your YouTube Data API key in the sidebar or GitHub/hosting Secrets.")
+    st.info("Setup needed: add your YouTube Data API key in the sidebar or hosting Secrets.")
     st.markdown("**Your channel is preconfigured:** https://youtube.com/@macherlaguru")
     st.stop()
 
