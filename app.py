@@ -169,9 +169,84 @@ def get_oauth_config():
         pass
     return None, None
 
+def get_supabase_config():
+    try:
+        cfg = st.secrets.get("supabase", {})
+        url = cfg.get("url", st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", "")))
+        secret_key = cfg.get("secret_key", st.secrets.get("SUPABASE_SECRET_KEY", os.getenv("SUPABASE_SECRET_KEY", "")))
+        return (url.rstrip("/"), secret_key) if url and secret_key else None
+    except Exception:
+        url = os.getenv("SUPABASE_URL", "")
+        secret_key = os.getenv("SUPABASE_SECRET_KEY", "")
+        return (url.rstrip("/"), secret_key) if url and secret_key else None
+
+def token_cipher():
+    # Derive an app-specific encryption key from the OAuth client secret.
+    # The key is never stored in the database or committed to source control.
+    import base64
+    from cryptography.fernet import Fernet
+    secret = oauth_config["web"]["client_secret"].encode("utf-8")
+    key_material = hmac.new(
+        secret,
+        b"macherla-guru-youtube-oauth-token-encryption-v1",
+        hashlib.sha256,
+    ).digest()
+    return Fernet(base64.urlsafe_b64encode(key_material))
+
+def supabase_headers(secret_key):
+    return {
+        "apikey": secret_key,
+        "Authorization": f"Bearer {secret_key}",
+        "Content-Type": "application/json",
+    }
+
+def persist_owner_credentials(creds):
+    config = get_supabase_config()
+    if not config:
+        return False
+    supabase_url, secret_key = config
+    encrypted = token_cipher().encrypt(creds.to_json().encode("utf-8")).decode("utf-8")
+    response = requests.post(
+        f"{supabase_url}/rest/v1/youtube_oauth_tokens",
+        params={"on_conflict": "singleton"},
+        headers={**supabase_headers(secret_key), "Prefer": "resolution=merge-duplicates,return=minimal"},
+        json={"singleton": True, "encrypted_token": encrypted},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return True
+
+def load_persisted_owner_credentials():
+    config = get_supabase_config()
+    if not config:
+        return None
+    supabase_url, secret_key = config
+    response = requests.get(
+        f"{supabase_url}/rest/v1/youtube_oauth_tokens",
+        params={"select": "encrypted_token", "singleton": "eq.true", "limit": "1"},
+        headers=supabase_headers(secret_key),
+        timeout=20,
+    )
+    response.raise_for_status()
+    rows = response.json()
+    if not rows:
+        return None
+    encrypted = rows[0].get("encrypted_token")
+    if not encrypted:
+        return None
+    return token_cipher().decrypt(encrypted.encode("utf-8")).decode("utf-8")
+
 def get_owner_credentials():
     from google.oauth2.credentials import Credentials
     raw = st.session_state.get("youtube_owner_token")
+    if not raw:
+        try:
+            raw = load_persisted_owner_credentials()
+            if raw:
+                st.session_state["youtube_owner_token"] = raw
+        except Exception as exc:
+            st.warning(f"Saved YouTube session could not be loaded: {exc}")
+            return None
     if not raw:
         return None
     creds = Credentials.from_authorized_user_info(json.loads(raw), YT_SCOPES)
@@ -179,6 +254,10 @@ def get_owner_credentials():
         from google.auth.transport.requests import Request
         creds.refresh(Request())
         st.session_state["youtube_owner_token"] = creds.to_json()
+        try:
+            persist_owner_credentials(creds)
+        except Exception as exc:
+            st.warning(f"Session refreshed, but secure backup could not be updated: {exc}")
     return creds if creds.valid else None
 
 oauth_config, oauth_redirect_uri = get_oauth_config()
@@ -229,6 +308,13 @@ if oauth_config and st.query_params.get("code"):
         callback_flow.code_verifier = saved_code_verifier
         callback_flow.fetch_token(code=st.query_params.get("code"))
         st.session_state["youtube_owner_token"] = callback_flow.credentials.to_json()
+        try:
+            if persist_owner_credentials(callback_flow.credentials):
+                st.success("YouTube authorization saved securely. Future app refreshes can restore the channel session.")
+            else:
+                st.warning("YouTube is connected for this session. Add Supabase URL and Secret Key in Streamlit Secrets to keep the login after refresh.")
+        except Exception as persist_error:
+            st.warning(f"YouTube connected for this session, but secure session backup failed: {persist_error}")
         st.query_params.clear()
         st.success("YouTube channel authorization successful.")
         st.rerun()
@@ -267,6 +353,8 @@ elif not owner_creds:
     st.caption("నీ Google accountలో Macherla Guru channel access ఉన్న accountతోనే అనుమతి ఇవ్వాలి.")
 else:
     st.success("YouTube channel connected for upload and analytics.")
+    if not get_supabase_config():
+        st.warning("Persistent login is not configured yet. Add [supabase] url and secret_key in Streamlit Secrets; the OAuth token will then be encrypted and stored outside the app session.")
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaIoBaseUpload
     youtube_owner = build("youtube", "v3", credentials=owner_creds, cache_discovery=False)
@@ -541,4 +629,4 @@ Return clean headings and ready-to-use output.
             except requests.RequestException as exc:
                 st.error(f"Network error: {exc}")
 
-st.caption("Privacy: API keys and OAuth client credentials are stored only in deployment secrets, never in GitHub. Private YouTube Analytics and uploads use the channel owner OAuth connection. Until secure persistent token storage is configured, refreshing or restarting this app may require reconnecting the channel.")
+st.caption("Privacy: API keys, Supabase Secret Key and Google OAuth client credentials belong only in Streamlit deployment Secrets, never in GitHub. When Supabase credentials are configured, the YouTube OAuth token is encrypted before server-side storage in a table inaccessible to anon/authenticated users. The Supabase Secret Key is used only by this server-side app.")
