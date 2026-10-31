@@ -902,6 +902,8 @@ else:
     if not GEMINI_KEY:
         st.info("AI diagnosis కోసం Streamlit Secretsలో GEMINI_API_KEY అవసరం.")
     if st.button("🔍 నా Shorts Views ఎందుకు తగ్గాయో Analyze చేయి", type="primary", disabled=not bool(GEMINI_KEY)):
+        st.session_state["growth_doctor_run"] = True
+    if st.session_state.get("growth_doctor_run"):
         try:
             from datetime import datetime, timedelta
             from zoneinfo import ZoneInfo
