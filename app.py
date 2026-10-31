@@ -919,7 +919,7 @@ else:
 
             growth_metrics = (
                 "views,engagedViews,estimatedMinutesWatched,averageViewDuration,"
-                "averageViewPercentage,likes,comments,shares,subscribersGained,subscribersLost"
+                "averageViewPercentage"
             )
 
             def growth_query(start_date, end_date, dimensions=None, metrics=growth_metrics, sort=None):
