@@ -954,8 +954,18 @@ else:
             basic_views_only = False
             with st.spinner("YouTube Analytics నుంచి గత 30 రోజుల Shorts data తీసుకుంటున్నాను..."):
                 try:
-                    recent_report = growth_query(recent_start, completed_end, dimensions="creatorContentType")
-                    previous_report = growth_query(previous_start, previous_end, dimensions="creatorContentType")
+                    # Start with the simplest supported content-type split. If this
+                    # succeeds, show a reliable Shorts views comparison before requesting
+                    # any optional engagement metrics.
+                    recent_report = growth_query(
+                        recent_start, completed_end,
+                        dimensions="creatorContentType", metrics="views"
+                    )
+                    previous_report = growth_query(
+                        previous_start, previous_end,
+                        dimensions="creatorContentType", metrics="views"
+                    )
+                    basic_views_only = True
                     recent = growth_row(recent_report)
                     previous = growth_row(previous_report)
                 except Exception as shorts_query_error:
@@ -1061,13 +1071,14 @@ else:
                     try:
                         recent_videos = growth_query(
                             recent_start, completed_end,
-                            dimensions="video,creatorContentType",
-                            # The channel's top-videos playback-detail report does not
-                            # support averageViewPercentage; request only supported metrics.
+                            # The API rejects the combined video + creatorContentType
+                            # query for this channel. Request the supported top-videos
+                            # report by video only and label it as mixed content.
+                            dimensions="video",
                             metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration",
                             sort="-views",
                         )
-                        video_data = shorts_only(growth_rows(recent_videos))
+                        video_data = growth_rows(recent_videos)
                     except Exception as video_report_error:
                         st.warning(f"Individual Shorts report తాత్కాలికంగా అందుబాటులో లేదు: {video_report_error}")
                     video_ids = [str(row.get("video")) for row in video_data if row.get("video")]
@@ -1082,12 +1093,12 @@ else:
                     for row in video_data:
                         row["Video"] = title_map.get(str(row.get("video")), str(row.get("video", "")))
                     if video_data:
-                        st.markdown("#### ఈ 15 రోజుల్లో Shorts performance (YouTube reportలో Shorts filterతో)")
+                        st.markdown("#### ఈ 15 రోజుల్లో top videos (content types కలిపి)")
                         video_frame = pd.DataFrame(video_data)
                         preferred = ["Video", "views", "engagedViews", "averageViewDuration", "estimatedMinutesWatched", "likes", "comments", "shares"]
                         st.dataframe(video_frame[[c for c in preferred if c in video_frame.columns]], use_container_width=True, hide_index=True)
                     else:
-                        st.info("ఈ 15 రోజుల windowలో video-level Shorts rows రాలేదు.")
+                        st.info("ఈ 15 రోజుల windowలో video-level rows రాలేదు.")
 
                     # Traffic-source report is useful context; gracefully skip it
                     # if YouTube does not support this report for the channel.
