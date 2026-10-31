@@ -922,13 +922,12 @@ else:
                 "averageViewPercentage,likes,comments,shares,subscribersGained,subscribersLost"
             )
 
-            def growth_query(start_date, end_date, dimensions=None, metrics=growth_metrics, filters="creatorContentType==SHORTS", sort=None):
+            def growth_query(start_date, end_date, dimensions=None, metrics=growth_metrics, sort=None):
                 args = {
                     "ids": "channel==MINE",
                     "startDate": start_date.isoformat(),
                     "endDate": end_date.isoformat(),
                     "metrics": metrics,
-                    "filters": filters,
                 }
                 if dimensions:
                     args["dimensions"] = dimensions
@@ -936,16 +935,20 @@ else:
                     args["sort"] = sort
                 return analytics_owner.reports().query(**args).execute()
 
-            def growth_row(report):
+            def growth_rows(report):
                 names = [h.get("name") for h in report.get("columnHeaders", [])]
-                rows_data = report.get("rows", [])
-                if not rows_data:
-                    return {}
-                return dict(zip(names, rows_data[0]))
+                return [dict(zip(names, row)) for row in report.get("rows", [])]
+
+            def shorts_only(rows):
+                return [row for row in rows if row.get("creatorContentType") == "SHORTS"]
+
+            def growth_row(report):
+                rows = shorts_only(growth_rows(report))
+                return rows[0] if rows else {}
 
             with st.spinner("YouTube Analytics నుంచి గత 30 రోజుల Shorts data తీసుకుంటున్నాను..."):
-                recent_report = growth_query(recent_start, completed_end)
-                previous_report = growth_query(previous_start, previous_end)
+                recent_report = growth_query(recent_start, completed_end, dimensions="creatorContentType")
+                previous_report = growth_query(previous_start, previous_end, dimensions="creatorContentType")
                 recent = growth_row(recent_report)
                 previous = growth_row(previous_report)
 
@@ -989,13 +992,11 @@ else:
                     # Video-level report helps identify which Shorts lost traction.
                     recent_videos = growth_query(
                         recent_start, completed_end,
-                        dimensions="video",
+                        dimensions="video,creatorContentType",
                         metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,shares",
                         sort="-views",
                     )
-                    video_headers = [h.get("name") for h in recent_videos.get("columnHeaders", [])]
-                    video_rows = recent_videos.get("rows", [])
-                    video_data = [dict(zip(video_headers, row)) for row in video_rows]
+                    video_data = shorts_only(growth_rows(recent_videos))
                     video_ids = [str(row.get("video")) for row in video_data if row.get("video")]
                     title_map = {}
                     for offset in range(0, len(video_ids), 50):
@@ -1021,11 +1022,10 @@ else:
                     try:
                         traffic_report = growth_query(
                             recent_start, completed_end,
-                            dimensions="insightTrafficSourceType",
+                            dimensions="insightTrafficSourceType,creatorContentType",
                             metrics="views,engagedViews",
                         )
-                        traffic_headers = [h.get("name") for h in traffic_report.get("columnHeaders", [])]
-                        traffic_data = [dict(zip(traffic_headers, row)) for row in traffic_report.get("rows", [])]
+                        traffic_data = shorts_only(growth_rows(traffic_report))
                     except Exception as traffic_exc:
                         st.caption(f"Traffic-source breakdown అందుబాటులో లేదు: {traffic_exc}")
 
