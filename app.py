@@ -933,6 +933,8 @@ else:
                     args["dimensions"] = dimensions
                 if sort:
                     args["sort"] = sort
+                    # Top-videos reports require maxResults (1–200) together with sort.
+                    args["maxResults"] = 200
                 # Google occasionally returns transient backendError 500s. Ask
                 # googleapiclient to retry transient server errors automatically.
                 return analytics_owner.reports().query(**args).execute(num_retries=3)
