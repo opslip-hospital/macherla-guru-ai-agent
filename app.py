@@ -944,7 +944,12 @@ else:
                 return [dict(zip(names, row)) for row in report.get("rows", [])]
 
             def shorts_only(rows):
-                return [row for row in rows if row.get("creatorContentType") == "SHORTS"]
+                # YouTube Analytics currently returns the value as lowercase "shorts".
+                # Normalize case so valid Shorts rows are not silently discarded.
+                return [
+                    row for row in rows
+                    if str(row.get("creatorContentType", "")).strip().casefold() == "shorts"
+                ]
 
             def aggregate_short_rows(rows):
                 short_rows = shorts_only(rows)
@@ -1017,7 +1022,7 @@ else:
                             st.error("రెండు date rangesలోనూ API rows ఇవ్వలేదు. ఇది content-type filter సమస్య కాదు; API report ఖాళీగా వచ్చింది.")
                         elif "creatorContentType" not in [h.get("name") for h in recent_report.get("columnHeaders", [])]:
                             st.error("API responseలో creatorContentType column లేదు. ఈ reportను Shorts-onlyగా filter చేయడం సాధ్యం కాదు.")
-                        elif not any(row.get("creatorContentType") == "SHORTS" for row in recent_raw_rows + previous_raw_rows):
+                        elif not any(str(row.get("creatorContentType", "")).strip().casefold() == "shorts" for row in recent_raw_rows + previous_raw_rows):
                             st.warning("Rows వచ్చాయి, కానీ వాటిలో creatorContentType == SHORTS లేదు. పై valuesలో API ఇచ్చిన అసలు content-type పేర్లు చూడండి.")
                 except Exception as shorts_query_error:
                     aggregate_is_shorts = False
