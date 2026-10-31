@@ -895,6 +895,217 @@ else:
                 st.warning(f"Analytics data ఇప్పుడందుబాటులో లేదు: {exc}")
 
 
+    # Macherla Guru AI Growth Doctor — owner-only Shorts analytics diagnosis
+    st.divider()
+    st.header("🩺 Macherla Guru — AI Growth Doctor")
+    st.caption("గత 15 పూర్తయిన రోజుల Shorts performanceను, దానికి ముందు 15 రోజుల dataతో పోల్చి నిజమైన channel analytics ఆధారంగా సూచనలు ఇస్తుంది.")
+    if not GEMINI_KEY:
+        st.info("AI diagnosis కోసం Streamlit Secretsలో GEMINI_API_KEY అవసరం.")
+    if st.button("🔍 నా Shorts Views ఎందుకు తగ్గాయో Analyze చేయి", type="primary", disabled=not bool(GEMINI_KEY)):
+        try:
+            from datetime import datetime, timedelta
+            from zoneinfo import ZoneInfo
+            import pandas as pd
+
+            growth_tz = ZoneInfo("Asia/Kolkata")
+            # Analytics reports are commonly delayed by 48–72 hours. Exclude the
+            # latest three days so the comparison uses completed data only.
+            completed_end = datetime.now(growth_tz).date() - timedelta(days=3)
+            recent_start = completed_end - timedelta(days=14)
+            previous_end = recent_start - timedelta(days=1)
+            previous_start = previous_end - timedelta(days=14)
+
+            growth_metrics = (
+                "views,engagedViews,estimatedMinutesWatched,averageViewDuration,"
+                "averageViewPercentage,likes,comments,shares,subscribersGained,subscribersLost"
+            )
+
+            def growth_query(start_date, end_date, dimensions=None, metrics=growth_metrics, filters="creatorContentType==SHORTS", sort=None):
+                args = {
+                    "ids": "channel==MINE",
+                    "startDate": start_date.isoformat(),
+                    "endDate": end_date.isoformat(),
+                    "metrics": metrics,
+                    "filters": filters,
+                }
+                if dimensions:
+                    args["dimensions"] = dimensions
+                if sort:
+                    args["sort"] = sort
+                return analytics_owner.reports().query(**args).execute()
+
+            def growth_row(report):
+                names = [h.get("name") for h in report.get("columnHeaders", [])]
+                rows_data = report.get("rows", [])
+                if not rows_data:
+                    return {}
+                return dict(zip(names, rows_data[0]))
+
+            with st.spinner("YouTube Analytics నుంచి గత 30 రోజుల Shorts data తీసుకుంటున్నాను..."):
+                recent_report = growth_query(recent_start, completed_end)
+                previous_report = growth_query(previous_start, previous_end)
+                recent = growth_row(recent_report)
+                previous = growth_row(previous_report)
+
+                if not recent and not previous:
+                    st.warning("ఈ రెండు periodsకీ Shorts Analytics data రాలేదు. Channel connection, Shorts data availability తనిఖీ చేయి.")
+                else:
+                    def metric_num(row, key):
+                        try:
+                            return float(row.get(key, 0) or 0)
+                        except (TypeError, ValueError):
+                            return 0.0
+
+                    def change_pct(current, earlier):
+                        if earlier == 0:
+                            return None if current == 0 else 100.0
+                        return ((current - earlier) / earlier) * 100.0
+
+                    recent_views = metric_num(recent, "views")
+                    previous_views = metric_num(previous, "views")
+                    recent_engaged = metric_num(recent, "engagedViews")
+                    previous_engaged = metric_num(previous, "engagedViews")
+                    recent_watch = metric_num(recent, "estimatedMinutesWatched")
+                    previous_watch = metric_num(previous, "estimatedMinutesWatched")
+                    recent_avd = metric_num(recent, "averageViewDuration")
+                    previous_avd = metric_num(previous, "averageViewDuration")
+                    recent_avp = metric_num(recent, "averageViewPercentage")
+                    previous_avp = metric_num(previous, "averageViewPercentage")
+
+                    st.markdown(
+                        f"**Recent:** {recent_start.strftime('%d %b')} – {completed_end.strftime('%d %b %Y')}  "
+                        f"  |  **Previous:** {previous_start.strftime('%d %b')} – {previous_end.strftime('%d %b %Y')}"
+                    )
+                    k1, k2, k3 = st.columns(3)
+                    k1.metric("Shorts views", f"{int(recent_views):,}", f"{change_pct(recent_views, previous_views):+.1f}%" if change_pct(recent_views, previous_views) is not None else "No previous data")
+                    k2.metric("Engaged views", f"{int(recent_engaged):,}", f"{change_pct(recent_engaged, previous_engaged):+.1f}%" if change_pct(recent_engaged, previous_engaged) is not None else "No previous data")
+                    k3.metric("Watch time (minutes)", f"{recent_watch:,.1f}", f"{change_pct(recent_watch, previous_watch):+.1f}%" if change_pct(recent_watch, previous_watch) is not None else "No previous data")
+                    k4, k5 = st.columns(2)
+                    k4.metric("Avg view duration (sec)", f"{recent_avd:.1f}", f"{change_pct(recent_avd, previous_avd):+.1f}%" if change_pct(recent_avd, previous_avd) is not None else "No previous data")
+                    k5.metric("Avg viewed (%)", f"{recent_avp:.1f}%", f"{change_pct(recent_avp, previous_avp):+.1f}%" if change_pct(recent_avp, previous_avp) is not None else "No previous data")
+
+                    # Video-level report helps identify which Shorts lost traction.
+                    recent_videos = growth_query(
+                        recent_start, completed_end,
+                        dimensions="video",
+                        metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,shares",
+                        sort="-views",
+                    )
+                    video_headers = [h.get("name") for h in recent_videos.get("columnHeaders", [])]
+                    video_rows = recent_videos.get("rows", [])
+                    video_data = [dict(zip(video_headers, row)) for row in video_rows]
+                    video_ids = [str(row.get("video")) for row in video_data if row.get("video")]
+                    title_map = {}
+                    for offset in range(0, len(video_ids), 50):
+                        batch = video_ids[offset:offset + 50]
+                        video_details = youtube_owner.videos().list(
+                            part="snippet", id=",".join(batch), maxResults=50
+                        ).execute()
+                        for video in video_details.get("items", []):
+                            title_map[video.get("id")] = video.get("snippet", {}).get("title", "Untitled Short")
+                    for row in video_data:
+                        row["Video"] = title_map.get(str(row.get("video")), str(row.get("video", "")))
+                    if video_data:
+                        st.markdown("#### ఈ 15 రోజుల్లో Shorts performance")
+                        video_frame = pd.DataFrame(video_data)
+                        preferred = ["Video", "views", "engagedViews", "averageViewDuration", "averageViewPercentage", "estimatedMinutesWatched", "likes", "comments", "shares"]
+                        st.dataframe(video_frame[[c for c in preferred if c in video_frame.columns]], use_container_width=True, hide_index=True)
+                    else:
+                        st.info("ఈ 15 రోజుల windowలో video-level Shorts rows రాలేదు.")
+
+                    # Traffic-source report is useful context; gracefully skip it
+                    # if YouTube does not support this report for the channel.
+                    traffic_data = []
+                    try:
+                        traffic_report = growth_query(
+                            recent_start, completed_end,
+                            dimensions="insightTrafficSourceType",
+                            metrics="views,engagedViews",
+                        )
+                        traffic_headers = [h.get("name") for h in traffic_report.get("columnHeaders", [])]
+                        traffic_data = [dict(zip(traffic_headers, row)) for row in traffic_report.get("rows", [])]
+                    except Exception as traffic_exc:
+                        st.caption(f"Traffic-source breakdown అందుబాటులో లేదు: {traffic_exc}")
+
+                    if traffic_data:
+                        st.markdown("#### Shorts views ఎక్కడి నుంచి వచ్చాయి?")
+                        st.dataframe(pd.DataFrame(traffic_data), use_container_width=True, hide_index=True)
+
+                    # Keep only real returned analytics in the model prompt; never
+                    # claim feed impressions or swipe-away metrics that this API
+                    # response does not provide.
+                    analysis_payload = {
+                        "recent_period": f"{recent_start.isoformat()} to {completed_end.isoformat()}",
+                        "previous_period": f"{previous_start.isoformat()} to {previous_end.isoformat()}",
+                        "recent_totals": recent,
+                        "previous_totals": previous,
+                        "recent_top_shorts": [
+                            {
+                                "title": row.get("Video", ""),
+                                "views": row.get("views", 0),
+                                "engagedViews": row.get("engagedViews", 0),
+                                "averageViewDuration": row.get("averageViewDuration", 0),
+                                "averageViewPercentage": row.get("averageViewPercentage", 0),
+                                "estimatedMinutesWatched": row.get("estimatedMinutesWatched", 0),
+                            }
+                            for row in video_data[:20]
+                        ],
+                        "recent_traffic_sources": traffic_data,
+                    }
+                    if st.button("🤖 Geminiతో Teluguలో కారణాలు & 7-day action plan ఇవ్వు", type="primary"):
+                        growth_prompt = f"""
+నీవు Macherla Guru అనే Telugu AI entertainment / PJ Babu comedy YouTube Shorts channelకు analytics specialist.
+క్రింద ఉన్న YouTube Analytics API నుంచి నిజంగా వచ్చిన JSON data మాత్రమే ఆధారంగా diagnosis ఇవ్వు:
+{json.dumps(analysis_payload, ensure_ascii=False)}
+తెలుగులో స్పష్టంగా ఈ sections ఇవ్వు:
+1. Views తగ్గాయా/పెరిగాయా? రెండు సమానమైన 15-day periodsను సంఖ్యలతో పోల్చు.
+2. ఏ metricలో బలహీనత కనిపిస్తోంది: views, engaged views, watch time, average duration, average viewed percentage? Data లేని metricను ఊహించవద్దు.
+3. Top-performing Shorts titles నుంచి కనిపించే topic/hook patterns; చిన్న sample అయితే ఆ పరిమితిని చెప్పు.
+4. Traffic sources data ఉంటే దాని అర్థం చెప్పు.
+5. తదుపరి 7 రోజులకు రోజుకు ఒక practical Shorts idea / hook / improvement సూచన ఇవ్వు; PJ Babu/Yamalokam comedyకు కొత్త కథలు సూచించు, పాత కథలను కాపీ చేయవద్దు.
+6. ఈ dataతో నిర్ధారించలేని విషయాలు ప్రత్యేకంగా చెప్పు. Shown in feed, chose to view, swiped away, impressions CTR లేదా shadowban గురించి API payloadలో data లేకపోతే వాటిపై నిర్ణయం చెప్పవద్దు. AI content కాబట్టి reach తగ్గిందని ఆధారం లేకుండా చెప్పవద్దు.
+నిర్దిష్టమైన actionable advice ఇవ్వు; views guarantee చేయవద్దు.
+"""
+                        with st.spinner("Gemini నిజమైన analytics ఆధారంగా Telugu diagnosis తయారు చేస్తోంది..."):
+                            growth_response = requests.post(
+                                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+                                headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                                json={
+                                    "contents": [{"parts": [{"text": growth_prompt}]}],
+                                    "generationConfig": {"temperature": 0.35, "maxOutputTokens": 3000},
+                                },
+                                timeout=(15, 180),
+                            )
+                            if not growth_response.ok:
+                                try:
+                                    growth_error = growth_response.json().get("error", {}).get("message", growth_response.text)
+                                except Exception:
+                                    growth_error = growth_response.text
+                                st.error(f"Gemini API error ({growth_response.status_code}): {growth_error}")
+                            else:
+                                growth_result = growth_response.json()
+                                growth_text = "\n".join(
+                                    part.get("text", "")
+                                    for candidate in growth_result.get("candidates", [])
+                                    for part in candidate.get("content", {}).get("parts", [])
+                                    if part.get("text")
+                                ).strip()
+                                if growth_text:
+                                    st.markdown("### 🧠 నీ Channel కోసం Gemini Diagnosis")
+                                    st.markdown(growth_text)
+                                    st.download_button(
+                                        "⬇️ Diagnosis report Download",
+                                        data=growth_text,
+                                        file_name="macherla-guru-growth-diagnosis.txt",
+                                        mime="text/plain",
+                                    )
+                                else:
+                                    st.warning("Gemini నుంచి diagnosis text రాలేదు. మళ్లీ ప్రయత్నించు.")
+        except Exception as growth_exc:
+            st.error(f"Shorts analytics diagnosisలో సమస్య: {growth_exc}")
+    st.caption("గమనిక: YouTube Analytics data సాధారణంగా 48–72 గంటలు ఆలస్యంగా రావచ్చు. ఈ report completed daysనే పోలుస్తుంది. Shorts views అనేవి play/replay starts; engaged views వేరే metric. Feed impressions / chose-to-view / swiped-away వివరాలు ఈ API queryలో లేవు.")
+
+
 # Gemini-powered Telugu content studio
 st.divider()
 st.header("✨ Gemini AI Content Studio")
