@@ -1075,7 +1075,7 @@ else:
                     else:
                         st.caption("ఇది views-only diagnostic. మిగతా metrics కోసం detailed Analytics report అందుబాటులోకి రావాలి.")
 
-                    # Video-level report helps identify which Shorts lost traction.
+                    # Top-video report adds context, but includes all content types.
                     video_data = []
                     try:
                         recent_videos = growth_query(
@@ -1098,7 +1098,7 @@ else:
                             part="snippet", id=",".join(batch), maxResults=50
                         ).execute()
                         for video in video_details.get("items", []):
-                            title_map[video.get("id")] = video.get("snippet", {}).get("title", "Untitled Short")
+                            title_map[video.get("id")] = video.get("snippet", {}).get("title", "Untitled video")
                     for row in video_data:
                         row["Video"] = title_map.get(str(row.get("video")), str(row.get("video", "")))
                     if video_data:
@@ -1156,7 +1156,7 @@ else:
 తెలుగులో స్పష్టంగా ఈ sections ఇవ్వు:
 1. Views తగ్గాయా/పెరిగాయా? రెండు సమానమైన 15-day periodsను సంఖ్యలతో పోల్చు.
 2. ఏ metricలో బలహీనత కనిపిస్తోంది: views, engaged views, watch time, average duration, average viewed percentage? Data లేని metricను ఊహించవద్దు.
-3. Top-performing Shorts titles నుంచి కనిపించే topic/hook patterns; చిన్న sample అయితే ఆ పరిమితిని చెప్పు.
+3. recent_top_videos_all_content_typesలోని video titles నుంచి topic/hook patterns చెప్పు; ఇది అన్ని content types కలిపిన sample అని స్పష్టంగా చెప్పు. Shorts aggregate‌తో దీనిని కలపవద్దు.
 4. Traffic sources data ఉంటే దాని అర్థం చెప్పు.
 5. తదుపరి 7 రోజులకు రోజుకు ఒక practical Shorts idea / hook / improvement సూచన ఇవ్వు; PJ Babu/Yamalokam comedyకు కొత్త కథలు సూచించు, పాత కథలను కాపీ చేయవద్దు.
 6. ఈ dataతో నిర్ధారించలేని విషయాలు ప్రత్యేకంగా చెప్పు. Shown in feed, chose to view, swiped away, impressions CTR లేదా shadowban గురించి API payloadలో data లేకపోతే వాటిపై నిర్ణయం చెప్పవద్దు. AI content కాబట్టి reach తగ్గిందని ఆధారం లేకుండా చెప్పవద్దు.
