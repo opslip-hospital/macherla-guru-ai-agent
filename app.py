@@ -949,6 +949,7 @@ else:
                 return rows[0] if rows else {}
 
             aggregate_is_shorts = True
+            basic_views_only = False
             with st.spinner("YouTube Analytics నుంచి గత 30 రోజుల Shorts data తీసుకుంటున్నాను..."):
                 try:
                     recent_report = growth_query(recent_start, completed_end, dimensions="creatorContentType")
@@ -968,12 +969,23 @@ else:
                     )
                     # The dimensionless fallback has no creatorContentType column.
                     # Read its first aggregate row directly instead of filtering it as Shorts.
-                    recent_fallback_report = growth_query(recent_start, completed_end)
-                    previous_fallback_report = growth_query(previous_start, previous_end)
+                    # Reduce the fallback to the most basic supported metric. This
+                    # distinguishes an empty date range from a metric-combination issue.
+                    basic_views_only = True
+                    recent_fallback_report = growth_query(
+                        recent_start, completed_end, metrics="views"
+                    )
+                    previous_fallback_report = growth_query(
+                        previous_start, previous_end, metrics="views"
+                    )
                     recent_fallback_rows = growth_rows(recent_fallback_report)
                     previous_fallback_rows = growth_rows(previous_fallback_report)
                     recent = recent_fallback_rows[0] if recent_fallback_rows else {}
                     previous = previous_fallback_rows[0] if previous_fallback_rows else {}
+                    st.info(
+                        "Shorts breakdown మరియు detailed aggregate query పనిచేయలేదు. "
+                        "ఇప్పుడు views-only diagnostic query వాడుతున్నాను; engagement/watch-time metricsను ఊహించి చూపించను."
+                    )
 
                 if not recent and not previous:
                     st.warning(
@@ -1011,12 +1023,15 @@ else:
                     if not aggregate_is_shorts:
                         st.caption("⚠️ YouTube Analytics Shorts breakdown 500 error ఇచ్చింది; పై comparisonలో అన్ని content types కలిసివున్నాయి.")
                     k1, k2, k3 = st.columns(3)
-                    k1.metric("Shorts views" if aggregate_is_shorts else "All-channel views", f"{int(recent_views):,}", f"{change_pct(recent_views, previous_views):+.1f}%" if change_pct(recent_views, previous_views) is not None else "No previous data")
-                    k2.metric("Engaged views" if aggregate_is_shorts else "All-channel engaged views", f"{int(recent_engaged):,}", f"{change_pct(recent_engaged, previous_engaged):+.1f}%" if change_pct(recent_engaged, previous_engaged) is not None else "No previous data")
-                    k3.metric("Watch time (minutes)", f"{recent_watch:,.1f}", f"{change_pct(recent_watch, previous_watch):+.1f}%" if change_pct(recent_watch, previous_watch) is not None else "No previous data")
-                    k4, k5 = st.columns(2)
-                    k4.metric("Avg view duration (sec)", f"{recent_avd:.1f}", f"{change_pct(recent_avd, previous_avd):+.1f}%" if change_pct(recent_avd, previous_avd) is not None else "No previous data")
-                    k5.metric("Avg viewed (%)", f"{recent_avp:.1f}%", f"{change_pct(recent_avp, previous_avp):+.1f}%" if change_pct(recent_avp, previous_avp) is not None else "No previous data")
+                    k1.metric("Shorts views" if aggregate_is_shorts else ("All-channel views" if not basic_views_only else "Basic views check"), f"{int(recent_views):,}", f"{change_pct(recent_views, previous_views):+.1f}%" if change_pct(recent_views, previous_views) is not None else "No previous data")
+                    if not basic_views_only:
+                        k2.metric("Engaged views" if aggregate_is_shorts else "All-channel engaged views", f"{int(recent_engaged):,}", f"{change_pct(recent_engaged, previous_engaged):+.1f}%" if change_pct(recent_engaged, previous_engaged) is not None else "No previous data")
+                        k3.metric("Watch time (minutes)", f"{recent_watch:,.1f}", f"{change_pct(recent_watch, previous_watch):+.1f}%" if change_pct(recent_watch, previous_watch) is not None else "No previous data")
+                        k4, k5 = st.columns(2)
+                        k4.metric("Avg view duration (sec)", f"{recent_avd:.1f}", f"{change_pct(recent_avd, previous_avd):+.1f}%" if change_pct(recent_avd, previous_avd) is not None else "No previous data")
+                        k5.metric("Avg viewed (%)", f"{recent_avp:.1f}%", f"{change_pct(recent_avp, previous_avp):+.1f}%" if change_pct(recent_avp, previous_avp) is not None else "No previous data")
+                    else:
+                        st.caption("ఇది views-only diagnostic. మిగతా metrics కోసం detailed Analytics report అందుబాటులోకి రావాలి.")
 
                     # Video-level report helps identify which Shorts lost traction.
                     video_data = []
