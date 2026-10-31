@@ -1060,7 +1060,9 @@ else:
                         recent_videos = growth_query(
                             recent_start, completed_end,
                             dimensions="video,creatorContentType",
-                            metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage",
+                            # The channel's top-videos playback-detail report does not
+                            # support averageViewPercentage; request only supported metrics.
+                            metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration",
                             sort="-views",
                         )
                         video_data = shorts_only(growth_rows(recent_videos))
@@ -1078,9 +1080,9 @@ else:
                     for row in video_data:
                         row["Video"] = title_map.get(str(row.get("video")), str(row.get("video", "")))
                     if video_data:
-                        st.markdown("#### ఈ 15 రోజుల్లో Shorts performance")
+                        st.markdown("#### ఈ 15 రోజుల్లో Shorts performance (YouTube reportలో Shorts filterతో)")
                         video_frame = pd.DataFrame(video_data)
-                        preferred = ["Video", "views", "engagedViews", "averageViewDuration", "averageViewPercentage", "estimatedMinutesWatched", "likes", "comments", "shares"]
+                        preferred = ["Video", "views", "engagedViews", "averageViewDuration", "estimatedMinutesWatched", "likes", "comments", "shares"]
                         st.dataframe(video_frame[[c for c in preferred if c in video_frame.columns]], use_container_width=True, hide_index=True)
                     else:
                         st.info("ఈ 15 రోజుల windowలో video-level Shorts rows రాలేదు.")
