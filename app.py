@@ -987,6 +987,27 @@ else:
                         "ఇప్పుడు views-only diagnostic query వాడుతున్నాను; engagement/watch-time metricsను ఊహించి చూపించను."
                     )
 
+                # A successful report can still return zero rows for both periods.
+                # Run the minimal views-only diagnostic in that case as well.
+                if aggregate_is_shorts and not recent and not previous:
+                    basic_views_only = True
+                    recent_fallback_report = growth_query(
+                        recent_start, completed_end, metrics="views"
+                    )
+                    previous_fallback_report = growth_query(
+                        previous_start, previous_end, metrics="views"
+                    )
+                    recent_fallback_rows = growth_rows(recent_fallback_report)
+                    previous_fallback_rows = growth_rows(previous_fallback_report)
+                    recent = recent_fallback_rows[0] if recent_fallback_rows else {}
+                    previous = previous_fallback_rows[0] if previous_fallback_rows else {}
+                    if recent or previous:
+                        st.info(
+                            "Shorts-specific reportలో rows లేవు. Basic channel views-only diagnostic చూపిస్తున్నాను; "
+                            "ఇది Shorts-only కాదు."
+                        )
+                        aggregate_is_shorts = False
+
                 if not recent and not previous:
                     st.warning(
                         "YouTube Analytics నుంచి ఈ రెండు date rangesకీ aggregate data కూడా రాలేదు. "
