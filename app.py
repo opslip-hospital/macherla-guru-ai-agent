@@ -966,11 +966,21 @@ else:
                         "ప్రాథమిక comparison చూపిస్తాను. దీన్ని Shorts-only resultగా భావించవద్దు. "
                         f"Details: {shorts_query_error}"
                     )
-                    recent = growth_row(growth_query(recent_start, completed_end))
-                    previous = growth_row(growth_query(previous_start, previous_end))
+                    # The dimensionless fallback has no creatorContentType column.
+                    # Read its first aggregate row directly instead of filtering it as Shorts.
+                    recent_fallback_report = growth_query(recent_start, completed_end)
+                    previous_fallback_report = growth_query(previous_start, previous_end)
+                    recent_fallback_rows = growth_rows(recent_fallback_report)
+                    previous_fallback_rows = growth_rows(previous_fallback_report)
+                    recent = recent_fallback_rows[0] if recent_fallback_rows else {}
+                    previous = previous_fallback_rows[0] if previous_fallback_rows else {}
 
                 if not recent and not previous:
-                    st.warning("ఈ రెండు periodsకీ Shorts Analytics data రాలేదు. Channel connection, Shorts data availability తనిఖీ చేయి.")
+                    st.warning(
+                        "YouTube Analytics నుంచి ఈ రెండు date rangesకీ aggregate data కూడా రాలేదు. "
+                        "ఇది views restriction/shadowban నిర్ధారణ కాదు. OAuth Analytics access, "
+                        "report availability లేదా YouTube API errorను విడిగా తనిఖీ చేయాలి."
+                    )
                 else:
                     def metric_num(row, key):
                         try:
@@ -1001,8 +1011,8 @@ else:
                     if not aggregate_is_shorts:
                         st.caption("⚠️ YouTube Analytics Shorts breakdown 500 error ఇచ్చింది; పై comparisonలో అన్ని content types కలిసివున్నాయి.")
                     k1, k2, k3 = st.columns(3)
-                    k1.metric("Shorts views", f"{int(recent_views):,}", f"{change_pct(recent_views, previous_views):+.1f}%" if change_pct(recent_views, previous_views) is not None else "No previous data")
-                    k2.metric("Engaged views", f"{int(recent_engaged):,}", f"{change_pct(recent_engaged, previous_engaged):+.1f}%" if change_pct(recent_engaged, previous_engaged) is not None else "No previous data")
+                    k1.metric("Shorts views" if aggregate_is_shorts else "All-channel views", f"{int(recent_views):,}", f"{change_pct(recent_views, previous_views):+.1f}%" if change_pct(recent_views, previous_views) is not None else "No previous data")
+                    k2.metric("Engaged views" if aggregate_is_shorts else "All-channel engaged views", f"{int(recent_engaged):,}", f"{change_pct(recent_engaged, previous_engaged):+.1f}%" if change_pct(recent_engaged, previous_engaged) is not None else "No previous data")
                     k3.metric("Watch time (minutes)", f"{recent_watch:,.1f}", f"{change_pct(recent_watch, previous_watch):+.1f}%" if change_pct(recent_watch, previous_watch) is not None else "No previous data")
                     k4, k5 = st.columns(2)
                     k4.metric("Avg view duration (sec)", f"{recent_avd:.1f}", f"{change_pct(recent_avd, previous_avd):+.1f}%" if change_pct(recent_avd, previous_avd) is not None else "No previous data")
