@@ -946,43 +946,57 @@ else:
             def shorts_only(rows):
                 return [row for row in rows if row.get("creatorContentType") == "SHORTS"]
 
-            def growth_row(report):
-                rows = shorts_only(growth_rows(report))
-                return rows[0] if rows else {}
+            def aggregate_short_rows(rows):
+                short_rows = shorts_only(rows)
+                if not short_rows:
+                    return {}
+                totals = {
+                    "creatorContentType": "SHORTS",
+                    "views": sum(metric_num_safe(row, "views") for row in short_rows),
+                    "engagedViews": sum(metric_num_safe(row, "engagedViews") for row in short_rows),
+                    "estimatedMinutesWatched": sum(metric_num_safe(row, "estimatedMinutesWatched") for row in short_rows),
+                }
+                view_weight = sum(metric_num_safe(row, "views") for row in short_rows)
+                if view_weight:
+                    totals["averageViewDuration"] = sum(
+                        metric_num_safe(row, "averageViewDuration") * metric_num_safe(row, "views")
+                        for row in short_rows
+                    ) / view_weight
+                    totals["averageViewPercentage"] = sum(
+                        metric_num_safe(row, "averageViewPercentage") * metric_num_safe(row, "views")
+                        for row in short_rows
+                    ) / view_weight
+                return totals
+
+            def metric_num_safe(row, key):
+                try:
+                    return float(row.get(key, 0) or 0)
+                except (TypeError, ValueError):
+                    return 0.0
 
             aggregate_is_shorts = True
             basic_views_only = False
             with st.spinner("YouTube Analytics నుంచి గత 30 రోజుల Shorts data తీసుకుంటున్నాను..."):
                 try:
-                    # Start with the simplest supported content-type split. If this
-                    # succeeds, show a reliable Shorts views comparison before requesting
-                    # any optional engagement metrics.
+                    # Playback-detail time reports support day + creatorContentType.
+                    # Request daily rows, then sum SHORTS rows for each 15-day window.
                     recent_report = growth_query(
                         recent_start, completed_end,
-                        dimensions="creatorContentType", metrics="views"
+                        dimensions="day,creatorContentType",
                     )
                     previous_report = growth_query(
                         previous_start, previous_end,
-                        dimensions="creatorContentType", metrics="views"
+                        dimensions="day,creatorContentType",
                     )
-                    basic_views_only = True
-                    recent = growth_row(recent_report)
-                    previous = growth_row(previous_report)
+                    recent = aggregate_short_rows(growth_rows(recent_report))
+                    previous = aggregate_short_rows(growth_rows(previous_report))
                 except Exception as shorts_query_error:
-                    # Fallback keeps the doctor useful during a YouTube Analytics
-                    # backend outage, but explicitly labels these totals as all
-                    # channel content rather than pretending they are Shorts-only.
                     aggregate_is_shorts = False
                     st.warning(
-                        "YouTube Shorts content-type report తాత్కాలికంగా అందుబాటులో లేదు. "
-                        "Retry చేసిన తర్వాత కూడా error వచ్చింది; ఇప్పుడు all-channel aggregateతో "
-                        "ప్రాథమిక comparison చూపిస్తాను. దీన్ని Shorts-only resultగా భావించవద్దు. "
+                        "YouTube Shorts daily/content-type report అందుబాటులో లేదు. "
+                        "ఇప్పుడు all-channel views-only comparison చూపిస్తున్నాను; దీన్ని Shorts-onlyగా భావించవద్దు. "
                         f"Details: {shorts_query_error}"
                     )
-                    # The dimensionless fallback has no creatorContentType column.
-                    # Read its first aggregate row directly instead of filtering it as Shorts.
-                    # Reduce the fallback to the most basic supported metric. This
-                    # distinguishes an empty date range from a metric-combination issue.
                     basic_views_only = True
                     recent_fallback_report = growth_query(
                         recent_start, completed_end, metrics="views"
@@ -994,13 +1008,8 @@ else:
                     previous_fallback_rows = growth_rows(previous_fallback_report)
                     recent = recent_fallback_rows[0] if recent_fallback_rows else {}
                     previous = previous_fallback_rows[0] if previous_fallback_rows else {}
-                    st.info(
-                        "Shorts breakdown మరియు detailed aggregate query పనిచేయలేదు. "
-                        "ఇప్పుడు views-only diagnostic query వాడుతున్నాను; engagement/watch-time metricsను ఊహించి చూపించను."
-                    )
 
-                # A successful report can still return zero rows for both periods.
-                # Run the minimal views-only diagnostic in that case as well.
+                # If the valid Shorts report returns no Shorts rows, fall back honestly.
                 if aggregate_is_shorts and not recent and not previous:
                     basic_views_only = True
                     recent_fallback_report = growth_query(
@@ -1015,7 +1024,7 @@ else:
                     previous = previous_fallback_rows[0] if previous_fallback_rows else {}
                     if recent or previous:
                         st.info(
-                            "Shorts-specific reportలో rows లేవు. Basic channel views-only diagnostic చూపిస్తున్నాను; "
+                            "Shorts-specific daily reportలో rows లేవు. Basic channel views-only diagnostic చూపిస్తున్నాను; "
                             "ఇది Shorts-only కాదు."
                         )
                         aggregate_is_shorts = False
@@ -1054,7 +1063,7 @@ else:
                         f"  |  **Previous:** {previous_start.strftime('%d %b')} – {previous_end.strftime('%d %b %Y')}"
                     )
                     if not aggregate_is_shorts:
-                        st.caption("⚠️ YouTube Analytics Shorts breakdown 500 error ఇచ్చింది; పై comparisonలో అన్ని content types కలిసివున్నాయి.")
+                        st.caption("⚠️ Shorts daily/content-type breakdown అందుబాటులో లేదు; పై comparison అన్ని content types కలిపినది.")
                     k1, k2, k3 = st.columns(3)
                     k1.metric("Shorts views" if aggregate_is_shorts else ("All-channel views" if not basic_views_only else "Basic views check"), f"{int(recent_views):,}", f"{change_pct(recent_views, previous_views):+.1f}%" if change_pct(recent_views, previous_views) is not None else "No previous data")
                     if not basic_views_only:
@@ -1071,9 +1080,9 @@ else:
                     try:
                         recent_videos = growth_query(
                             recent_start, completed_end,
-                            # The API rejects the combined video + creatorContentType
-                            # query for this channel. Request the supported top-videos
-                            # report by video only and label it as mixed content.
+                            # Top-videos playback-detail report: video is required.
+                            # Keep this as all-content video ranking; Shorts totals are
+                            # calculated separately from day + creatorContentType rows.
                             dimensions="video",
                             metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration",
                             sort="-views",
@@ -1093,7 +1102,7 @@ else:
                     for row in video_data:
                         row["Video"] = title_map.get(str(row.get("video")), str(row.get("video", "")))
                     if video_data:
-                        st.markdown("#### ఈ 15 రోజుల్లో top videos (content types కలిపి)")
+                        st.markdown("#### ఈ 15 రోజుల్లో top videos (అన్ని content types)")
                         video_frame = pd.DataFrame(video_data)
                         preferred = ["Video", "views", "engagedViews", "averageViewDuration", "estimatedMinutesWatched", "likes", "comments", "shares"]
                         st.dataframe(video_frame[[c for c in preferred if c in video_frame.columns]], use_container_width=True, hide_index=True)
@@ -1126,7 +1135,7 @@ else:
                         "aggregate_content_type": "SHORTS" if aggregate_is_shorts else "ALL_CHANNEL_CONTENT_FALLBACK_NOT_SHORTS_ONLY",
                         "recent_totals": recent,
                         "previous_totals": previous,
-                        "recent_top_shorts": [
+                        "recent_top_videos_all_content_types": [
                             {
                                 "title": row.get("Video", ""),
                                 "views": row.get("views", 0),
