@@ -988,8 +988,37 @@ else:
                         previous_start, previous_end,
                         dimensions="day,creatorContentType",
                     )
-                    recent = aggregate_short_rows(growth_rows(recent_report))
-                    previous = aggregate_short_rows(growth_rows(previous_report))
+                    recent_raw_rows = growth_rows(recent_report)
+                    previous_raw_rows = growth_rows(previous_report)
+                    recent = aggregate_short_rows(recent_raw_rows)
+                    previous = aggregate_short_rows(previous_raw_rows)
+
+                    # Expose the exact Analytics API response shape so an empty
+                    # Shorts filter can be diagnosed instead of silently guessed.
+                    def growth_response_diagnostics(report, rows):
+                        headers = [h.get("name") for h in report.get("columnHeaders", [])]
+                        type_values = sorted({
+                            str(row.get("creatorContentType", "<missing>"))
+                            for row in rows
+                        })
+                        return {
+                            "row_count": len(rows),
+                            "column_headers": headers,
+                            "creatorContentType_values": type_values,
+                            "sample_rows": rows[:3],
+                        }
+
+                    with st.expander("🔬 Analytics API raw diagnostics (Shorts rows ఎందుకు లేవో చూడండి)", expanded=True):
+                        st.write("Recent period response")
+                        st.json(growth_response_diagnostics(recent_report, recent_raw_rows))
+                        st.write("Previous period response")
+                        st.json(growth_response_diagnostics(previous_report, previous_raw_rows))
+                        if not recent_raw_rows and not previous_raw_rows:
+                            st.error("రెండు date rangesలోనూ API rows ఇవ్వలేదు. ఇది content-type filter సమస్య కాదు; API report ఖాళీగా వచ్చింది.")
+                        elif "creatorContentType" not in [h.get("name") for h in recent_report.get("columnHeaders", [])]:
+                            st.error("API responseలో creatorContentType column లేదు. ఈ reportను Shorts-onlyగా filter చేయడం సాధ్యం కాదు.")
+                        elif not any(row.get("creatorContentType") == "SHORTS" for row in recent_raw_rows + previous_raw_rows):
+                            st.warning("Rows వచ్చాయి, కానీ వాటిలో creatorContentType == SHORTS లేదు. పై valuesలో API ఇచ్చిన అసలు content-type పేర్లు చూడండి.")
                 except Exception as shorts_query_error:
                     aggregate_is_shorts = False
                     st.warning(
