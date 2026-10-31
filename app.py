@@ -1009,13 +1009,17 @@ else:
                     k5.metric("Avg viewed (%)", f"{recent_avp:.1f}%", f"{change_pct(recent_avp, previous_avp):+.1f}%" if change_pct(recent_avp, previous_avp) is not None else "No previous data")
 
                     # Video-level report helps identify which Shorts lost traction.
-                    recent_videos = growth_query(
-                        recent_start, completed_end,
-                        dimensions="video,creatorContentType",
-                        metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage",
-                        sort="-views",
-                    )
-                    video_data = shorts_only(growth_rows(recent_videos))
+                    video_data = []
+                    try:
+                        recent_videos = growth_query(
+                            recent_start, completed_end,
+                            dimensions="video,creatorContentType",
+                            metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage",
+                            sort="-views",
+                        )
+                        video_data = shorts_only(growth_rows(recent_videos))
+                    except Exception as video_report_error:
+                        st.warning(f"Individual Shorts report తాత్కాలికంగా అందుబాటులో లేదు: {video_report_error}")
                     video_ids = [str(row.get("video")) for row in video_data if row.get("video")]
                     title_map = {}
                     for offset in range(0, len(video_ids), 50):
