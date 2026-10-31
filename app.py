@@ -1080,7 +1080,7 @@ else:
                         )
                         video_data = growth_rows(recent_videos)
                     except Exception as video_report_error:
-                        st.warning(f"Individual Shorts report తాత్కాలికంగా అందుబాటులో లేదు: {video_report_error}")
+                        st.warning(f"Top videos report తాత్కాలికంగా అందుబాటులో లేదు: {video_report_error}")
                     video_ids = [str(row.get("video")) for row in video_data if row.get("video")]
                     title_map = {}
                     for offset in range(0, len(video_ids), 50):
