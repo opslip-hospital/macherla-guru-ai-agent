@@ -933,7 +933,9 @@ else:
                     args["dimensions"] = dimensions
                 if sort:
                     args["sort"] = sort
-                return analytics_owner.reports().query(**args).execute()
+                # Google occasionally returns transient backendError 500s. Ask
+                # googleapiclient to retry transient server errors automatically.
+                return analytics_owner.reports().query(**args).execute(num_retries=3)
 
             def growth_rows(report):
                 names = [h.get("name") for h in report.get("columnHeaders", [])]
@@ -946,11 +948,26 @@ else:
                 rows = shorts_only(growth_rows(report))
                 return rows[0] if rows else {}
 
+            aggregate_is_shorts = True
             with st.spinner("YouTube Analytics నుంచి గత 30 రోజుల Shorts data తీసుకుంటున్నాను..."):
-                recent_report = growth_query(recent_start, completed_end, dimensions="creatorContentType")
-                previous_report = growth_query(previous_start, previous_end, dimensions="creatorContentType")
-                recent = growth_row(recent_report)
-                previous = growth_row(previous_report)
+                try:
+                    recent_report = growth_query(recent_start, completed_end, dimensions="creatorContentType")
+                    previous_report = growth_query(previous_start, previous_end, dimensions="creatorContentType")
+                    recent = growth_row(recent_report)
+                    previous = growth_row(previous_report)
+                except Exception as shorts_query_error:
+                    # Fallback keeps the doctor useful during a YouTube Analytics
+                    # backend outage, but explicitly labels these totals as all
+                    # channel content rather than pretending they are Shorts-only.
+                    aggregate_is_shorts = False
+                    st.warning(
+                        "YouTube Shorts content-type report తాత్కాలికంగా అందుబాటులో లేదు. "
+                        "Retry చేసిన తర్వాత కూడా error వచ్చింది; ఇప్పుడు all-channel aggregateతో "
+                        "ప్రాథమిక comparison చూపిస్తాను. దీన్ని Shorts-only resultగా భావించవద్దు. "
+                        f"Details: {shorts_query_error}"
+                    )
+                    recent = growth_row(growth_query(recent_start, completed_end))
+                    previous = growth_row(growth_query(previous_start, previous_end))
 
                 if not recent and not previous:
                     st.warning("ఈ రెండు periodsకీ Shorts Analytics data రాలేదు. Channel connection, Shorts data availability తనిఖీ చేయి.")
@@ -981,6 +998,8 @@ else:
                         f"**Recent:** {recent_start.strftime('%d %b')} – {completed_end.strftime('%d %b %Y')}  "
                         f"  |  **Previous:** {previous_start.strftime('%d %b')} – {previous_end.strftime('%d %b %Y')}"
                     )
+                    if not aggregate_is_shorts:
+                        st.caption("⚠️ YouTube Analytics Shorts breakdown 500 error ఇచ్చింది; పై comparisonలో అన్ని content types కలిసివున్నాయి.")
                     k1, k2, k3 = st.columns(3)
                     k1.metric("Shorts views", f"{int(recent_views):,}", f"{change_pct(recent_views, previous_views):+.1f}%" if change_pct(recent_views, previous_views) is not None else "No previous data")
                     k2.metric("Engaged views", f"{int(recent_engaged):,}", f"{change_pct(recent_engaged, previous_engaged):+.1f}%" if change_pct(recent_engaged, previous_engaged) is not None else "No previous data")
@@ -993,7 +1012,7 @@ else:
                     recent_videos = growth_query(
                         recent_start, completed_end,
                         dimensions="video,creatorContentType",
-                        metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage,likes,comments,shares",
+                        metrics="views,engagedViews,estimatedMinutesWatched,averageViewDuration,averageViewPercentage",
                         sort="-views",
                     )
                     video_data = shorts_only(growth_rows(recent_videos))
@@ -1039,6 +1058,7 @@ else:
                     analysis_payload = {
                         "recent_period": f"{recent_start.isoformat()} to {completed_end.isoformat()}",
                         "previous_period": f"{previous_start.isoformat()} to {previous_end.isoformat()}",
+                        "aggregate_content_type": "SHORTS" if aggregate_is_shorts else "ALL_CHANNEL_CONTENT_FALLBACK_NOT_SHORTS_ONLY",
                         "recent_totals": recent,
                         "previous_totals": previous,
                         "recent_top_shorts": [
