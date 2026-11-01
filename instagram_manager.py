@@ -1,5 +1,5 @@
 """Instagram Manager for Macherla Guru.
-Uses Meta's Unified Login / System User Access Token configured in Streamlit Secrets.
+Uses a Meta Instagram-compatible access token configured privately in Streamlit Secrets.
 Never stores tokens in GitHub or displays them in the UI.
 """
 import time
@@ -12,7 +12,7 @@ def _ig_config():
     try:
         cfg = st.secrets.get("instagram", {})
         return {
-            "token": str(cfg.get("system_user_access_token", "")).strip(),
+            "token": str(cfg.get("access_token", cfg.get("user_access_token", cfg.get("system_user_access_token", "")))).strip(),
             "ig_user_id": str(cfg.get("ig_user_id", "")).strip(),
             "api_version": str(cfg.get("api_version", "v25.0")).strip(),
         }
@@ -81,11 +81,11 @@ def render_instagram_manager():
     if not cfg["token"] or not cfg["ig_user_id"]:
         st.warning(
             "Instagram connection setup is waiting for Meta credentials. "
-            "The app is ready to read the official Meta System User Access Token from Streamlit Secrets."
+            "Add your Instagram-compatible Meta access token and Instagram account ID in Streamlit Secrets."
         )
         st.code(
             '[instagram]\n'
-            'system_user_access_token = "ADD_META_SYSTEM_USER_TOKEN_IN_STREAMLIT_SECRETS"\n'
+            'access_token = "ADD_META_ACCESS_TOKEN_IN_STREAMLIT_SECRETS"\n'
             'ig_user_id = "ADD_INSTAGRAM_ACCOUNT_ID"\n'
             'api_version = "v25.0"',
             language="toml",
@@ -165,6 +165,6 @@ def render_instagram_manager():
     except Exception as exc:
         st.error(f"Instagram connection/API error: {exc}")
         st.caption(
-            "Check that the System User token belongs to the Meta app and has access to this exact "
-            "Instagram asset. Do not change or remove any Facebook/Instagram account links to fix this."
+            "Check that the access token belongs to the correct Meta app, has the required permissions, and can access this exact "
+            "Instagram asset. User tokens may expire; if this token is expired or lacks access, generate a fresh supported token. Do not change or remove any Facebook/Instagram account links to fix this."
         )
