@@ -8,6 +8,106 @@ import streamlit as st
 
 TIMEOUT = 30
 
+# Facebook Login for Business (Instagram API Unified Login) OAuth settings.
+META_APP_ID = "1681552070258441"
+META_LOGIN_CONFIG_ID = "4141386829497142"
+DEFAULT_REDIRECT_URI = "https://macherla-guru-ai-agent-utaxv6fgkyc4salfken7wv.streamlit.app"
+GRAPH_VERSION = "v25.0"
+
+def _oauth_settings():
+    try:
+        cfg = st.secrets.get("instagram_oauth", {})
+        secret = str(cfg.get("app_secret", "")).strip()
+        redirect_uri = str(cfg.get("redirect_uri", DEFAULT_REDIRECT_URI)).strip()
+        return secret, redirect_uri
+    except Exception:
+        return "", DEFAULT_REDIRECT_URI
+
+def _signed_state(secret):
+    import hashlib, hmac, secrets
+    nonce = secrets.token_urlsafe(24)
+    signature = hmac.new(secret.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+    st.session_state["ig_oauth_state"] = nonce + "." + signature
+    return st.session_state["ig_oauth_state"]
+
+def _valid_state(secret, received):
+    import hashlib, hmac
+    expected = st.session_state.get("ig_oauth_state", "")
+    if not expected or not received:
+        return False
+    try:
+        nonce, signature = received.rsplit(".", 1)
+        expected_signature = hmac.new(secret.encode(), nonce.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, received) and hmac.compare_digest(signature, expected_signature)
+    except Exception:
+        return False
+
+def _complete_meta_login(secret, redirect_uri):
+    code = st.query_params.get("code")
+    if not code:
+        return
+    state = st.query_params.get("state", "")
+    if not _valid_state(secret, state):
+        raise RuntimeError("Meta login state check failed. Please start Connect Instagram again.")
+    token_response = requests.get(
+        f"https://graph.facebook.com/{GRAPH_VERSION}/oauth/access_token",
+        params={
+            "client_id": META_APP_ID,
+            "client_secret": secret,
+            "redirect_uri": redirect_uri,
+            "code": code,
+        },
+        timeout=TIMEOUT,
+    )
+    token_body = token_response.json()
+    if not token_response.ok or "access_token" not in token_body:
+        raise RuntimeError(token_body.get("error", {}).get("message", "Meta token exchange failed."))
+    user_token = token_body["access_token"]
+
+    # Exchange for a long-lived user token before discovering the selected Page/Instagram asset.
+    long_response = requests.get(
+        f"https://graph.facebook.com/{GRAPH_VERSION}/oauth/access_token",
+        params={
+            "grant_type": "fb_exchange_token",
+            "client_id": META_APP_ID,
+            "client_secret": secret,
+            "fb_exchange_token": user_token,
+        },
+        timeout=TIMEOUT,
+    )
+    long_body = long_response.json()
+    if long_response.ok and long_body.get("access_token"):
+        user_token = long_body["access_token"]
+
+    pages_response = requests.get(
+        f"https://graph.facebook.com/{GRAPH_VERSION}/me/accounts",
+        params={
+            "fields": "id,name,access_token,instagram_business_account",
+            "access_token": user_token,
+        },
+        timeout=TIMEOUT,
+    )
+    pages_body = pages_response.json()
+    if not pages_response.ok:
+        raise RuntimeError(pages_body.get("error", {}).get("message", "Could not read Facebook Pages."))
+    connected = [
+        p for p in pages_body.get("data", [])
+        if p.get("instagram_business_account", {}).get("id") and p.get("access_token")
+    ]
+    if not connected:
+        raise RuntimeError(
+            "Meta login completed, but no Page with a connected Instagram professional account was returned. "
+            "Check that the Facebook Login for Business configuration includes the Page and Instagram assets, "
+            "and grants pages_show_list, pages_read_engagement and instagram_basic."
+        )
+    # Keep the connected Page token and Instagram account ID only in this Streamlit session.
+    st.session_state["ig_oauth_pages"] = connected
+    st.session_state["ig_oauth_user_token"] = user_token
+    st.session_state.pop("ig_oauth_state", None)
+    st.query_params.clear()
+    st.rerun()
+
+
 def _ig_config():
     try:
         cfg = st.secrets.get("instagram", {})
@@ -78,6 +178,43 @@ def render_instagram_manager():
     st.header("📸 Macherla Guru — Instagram Manager")
     st.caption("Official Meta Graph API • @macherlaguru • Owner approval before publishing")
     cfg = _ig_config()
+    oauth_secret, oauth_redirect_uri = _oauth_settings()
+    # A token obtained through the current Meta OAuth session takes precedence over old manual secrets.
+    selected = st.session_state.get("ig_oauth_selected")
+    if selected:
+        cfg["token"] = selected.get("access_token", "")
+        cfg["ig_user_id"] = selected.get("instagram_business_account", {}).get("id", "")
+    if oauth_secret:
+        try:
+            _complete_meta_login(oauth_secret, oauth_redirect_uri)
+        except Exception as oauth_error:
+            st.error(f"Meta Instagram login failed: {oauth_error}")
+            st.query_params.clear()
+        state = st.session_state.get("ig_oauth_state") or _signed_state(oauth_secret)
+        from urllib.parse import urlencode
+        login_url = "https://www.facebook.com/v25.0/dialog/oauth?" + urlencode({
+            "client_id": META_APP_ID,
+            "redirect_uri": oauth_redirect_uri,
+            "config_id": META_LOGIN_CONFIG_ID,
+            "response_type": "code",
+            "state": state,
+        })
+        st.link_button("🔐 Connect Instagram with Meta", login_url, type="primary")
+        pages = st.session_state.get("ig_oauth_pages", [])
+        if pages:
+            page_labels = [f'{p.get("name", "Facebook Page")} — Instagram ID {p["instagram_business_account"]["id"]}' for p in pages]
+            chosen_index = st.selectbox(
+                "Choose the Facebook Page connected to @macherlaguru",
+                range(len(pages)),
+                format_func=lambda i: page_labels[i],
+                key="ig_oauth_page_choice",
+            )
+            if st.button("Use this Instagram account", key="ig_use_selected_page"):
+                st.session_state["ig_oauth_selected"] = pages[chosen_index]
+                st.rerun()
+    else:
+        st.info("To enable secure Meta login, add [instagram_oauth] with app_secret in Streamlit Secrets. Never share the App Secret in chat or GitHub.")
+        st.code('[instagram_oauth]\\napp_secret = "YOUR_META_APP_SECRET"\\nredirect_uri = "' + DEFAULT_REDIRECT_URI + '"', language="toml")
     if not cfg["token"] or not cfg["ig_user_id"]:
         st.warning(
             "Instagram connection setup is waiting for Meta credentials. "
