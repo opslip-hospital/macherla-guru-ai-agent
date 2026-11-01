@@ -1350,13 +1350,3 @@ Return clean headings and ready-to-use output.
 
 st.caption("Privacy: API keys, Supabase Secret Key and Google OAuth client credentials belong only in Streamlit deployment Secrets, never in GitHub. When Supabase credentials are configured, the YouTube OAuth token is encrypted before server-side storage in a table inaccessible to anon/authenticated users. The Supabase Secret Key is used only by this server-side app.")
 
-
-# Instagram Manager integration — kept separate from the YouTube workflows.
-try:
-    from instagram_manager import render_instagram_manager
-    render_instagram_manager()
-except Exception as instagram_manager_error:
-    st.divider()
-    st.header("📸 Macherla Guru — Instagram Manager")
-    st.error(f"Instagram Manager could not load: {instagram_manager_error}")
-    st.caption("YouTube Manager features are separate and remain unchanged.")
