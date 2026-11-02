@@ -101,7 +101,7 @@ if merge_videos and st.button("🎞️ Merge videos & create one MP4", type="pri
                 if not failed:
                     concat_list = merge_dir / "concat_list.txt"
                     concat_list.write_text(
-                        "".join(f"file '{p.as_posix()}'\\n" for p in normalized),
+                        "".join(f"file '{p.as_posix()}'\n" for p in normalized),
                         encoding="utf-8"
                     )
                     merged_path = merge_dir / "macherla-guru-merged.mp4"
