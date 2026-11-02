@@ -185,24 +185,31 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                 st.stop()
 
             try:
-                with st.spinner("AI subject cutout చేస్తున్నాను. మొదటిసారి model download కావచ్చు; కొంత సమయం పడుతుంది..."):
+                with st.spinner("AI model load చేస్తున్నాను. మొదటిసారి model download కావచ్చు..."):
                     model_name = "isnet-general-use" if ai_subject_type == "General subject / objects" else "u2net_human_seg"
                     session = new_session(model_name)
-                    for frame_path in frame_paths:
-                        frame_bytes = frame_path.read_bytes()
-                        if refine_edges:
-                            cutout = remove(
-                                frame_bytes,
-                                session=session,
-                                only_mask=False,
-                                alpha_matting=True,
-                                alpha_matting_foreground_threshold=240,
-                                alpha_matting_background_threshold=10,
-                                alpha_matting_erode_size=10,
-                            )
-                        else:
-                            cutout = remove(frame_bytes, session=session, only_mask=False)
-                        frame_path.write_bytes(cutout)
+                progress = st.progress(0, text="AI background removal ప్రారంభమవుతోంది...")
+                for frame_index, frame_path in enumerate(frame_paths, start=1):
+                    frame_bytes = frame_path.read_bytes()
+                    if refine_edges:
+                        cutout = remove(
+                            frame_bytes,
+                            session=session,
+                            only_mask=False,
+                            alpha_matting=True,
+                            alpha_matting_foreground_threshold=240,
+                            alpha_matting_background_threshold=10,
+                            alpha_matting_erode_size=10,
+                        )
+                    else:
+                        cutout = remove(frame_bytes, session=session, only_mask=False)
+                    frame_path.write_bytes(cutout)
+                    if frame_index == 1 or frame_index % 5 == 0 or frame_index == len(frame_paths):
+                        progress.progress(
+                            frame_index / len(frame_paths),
+                            text=f"AI cutout: {frame_index}/{len(frame_paths)} frames"
+                        )
+                progress.empty()
             except Exception as exc:
                 st.error("AI model download లేదా background removalలో సమస్య వచ్చింది.")
                 st.code(str(exc)[-2500:])
