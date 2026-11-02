@@ -15,23 +15,24 @@ st.info(
     "Final MP4ని నువ్వే download చేసుకుని ఉపయోగించవచ్చు."
 )
 
-st.subheader("📱 Photo → Video Person Swap")
+st.subheader("📱 Video → Video Person Replacement (Free trial)")
 st.write(
-    "కంప్యూటర్/GPU అవసరం లేకుండా phone browserలోనే try చేయవచ్చు. "
+    "Phone browserలో source video + replacement character photo ఇచ్చి person replacement try చేయవచ్చు. "
     "ఇది external cloud tool; ఈ editorలో direct rendering కాదు."
 )
-st.link_button("🪄 Open Photo → Video Swap", "https://pvideo.app/p-video-replace", use_container_width=True)
+st.link_button("🪄 Open Free Video Person Replacement", "https://seedance.film/ai-video-generator/video-to-video", use_container_width=True)
 st.caption(
-    "Source video: MP4/MOV, 3–15 seconds, up to 100 MB. "
-    "Replacement photo: JPG/PNG/WEBP, up to 10 MB. "
-    "Free signup credits ఉంటాయి; credits అయిపోయాక per-second charges ఉంటాయి. "
-    "720pతో చిన్న test మొదలుపెట్టు. Outputను preview చేసి download చేసుకో."
+    "కొత్త account free credits: వారి FAQ ప్రకారం రెండు attempts, ఒక completed video వరకు; "
+    "free video-to-video Seedance 2.0 Miniలో గరిష్ఠంగా 720p. ఇది unlimited free కాదు. "
+    "Stylized / fictional characters‌కు ప్రయత్నించు; photorealistic real-person faces reject కావచ్చు. "
+    "Free-tier commercial-use rights မရှိాయని వారి terms చెబుతున్నాయి—monetized uploadకు ముందు licence తప్పనిసరిగా చెక్ చేయి. "
+    "ఇది third-party service; upload చేసే వీడియో/ఫోటోలకు నీకు హక్కులు ఉండాలి."
 )
 with st.expander("ఈ toolలో ఏ prompt ఇవ్వాలి?"):
     st.code(
-        "Replace only the main person in the source video with the person in the reference image. "
-        "Preserve the original actions, body movement, timing, camera, background, other people, "
-        "objects and audio. Do not change the scene. Keep the replacement person's identity consistent.",
+        "Replace the man in the video with the character from the image. "
+        "Keep his movements, timing, framing, camera motion and lighting exactly as they are; "
+        "change nothing else in the scene.",
         language="text",
     )
 
