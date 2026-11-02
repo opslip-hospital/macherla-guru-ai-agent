@@ -607,7 +607,12 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             input_index = 1
             cursor = 0.0
             segment_index = 0
-            main_count = sum(1 for cue_start, _, _ in valid_timeline if cue_start > 0) + 1
+            main_count = 1
+            gap_cursor = 0.0
+            for cue_start, cue_end, _ in valid_timeline:
+                if cue_start > gap_cursor:
+                    main_count += 1
+                gap_cursor = cue_end
             # Split the original video stream when multiple speaker segments are needed.
             if main_count > 1:
                 split_outputs = "".join(f"[main_src{i}]" for i in range(main_count))
@@ -665,8 +670,9 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             if mute_audio:
                 cmd += ["-an"]
             else:
-                if audio_filters:
-                    cmd += ["-filter:a", ",".join(audio_filters)]
+                broll_audio_filters = [item for item in audio_filters if item != "atempo=0.5"]
+                if broll_audio_filters:
+                    cmd += ["-filter:a", ",".join(broll_audio_filters)]
                 cmd += ["-c:a", "aac", "-b:a", "192k"]
             cmd += [
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", video_crf,
