@@ -748,6 +748,25 @@ if one_prompt_clicked or manual_edit_clicked:
             export_size = "Balanced"
         wants_broll = any(term in prompt_lower for term in ["b-roll", "broll", "బి-రోల్", "visuals", "విజువల్స్"])
         wants_captions = any(term in prompt_lower for term in ["subtitle", "subtitles", "captions", "సబ్‌టైటిల్స్", "క్యాప్షన్స్"])
+        prompt_summary = [
+            f"Format: {aspect}",
+            f"Resolution: {resolution}",
+            f"Noise reduction: {'ON' if denoise else 'OFF'}",
+            f"Sharpen: {'ON' if sharpen else 'OFF'}",
+            f"Slow motion: {'ON' if smooth else 'OFF'}",
+            f"Frame rate: {fps_choice}",
+            f"Audio: {'Muted' if mute_audio else str(audio_volume) + '% volume'}",
+            f"Export: {export_size}",
+        ]
+        if rotation != "No rotation":
+            prompt_summary.append(f"Rotation: {rotation}")
+        if flip_horizontal:
+            prompt_summary.append("Mirror: ON")
+        if wants_broll:
+            prompt_summary.append("Prompt B-Roll: requested")
+        if wants_captions:
+            prompt_summary.append(f"Automatic captions: {caption_language}")
+        st.info("Prompt నుంచి ఎంచుకున్న settings:\\n" + "\\n".join(f"• {item}" for item in prompt_summary))
         wants_background = any(term in prompt_lower for term in ["change background", "replace background", "remove background", "background replacement", "బ్యాక్‌గ్రౌండ్ మార్చు", "బ్యాక్ గ్రౌండ్ మార్చు"])
         if wants_background and not (bg_mode or ai_bg_mode):
             st.error("Background మార్చాలంటే Green/Blue లేదా AI Background Removal mode ON చేసి, కొత్త background image/video upload చేయాలి. ఈ file అవసరాన్ని prompt ఒక్కటితో భర్తీ చేయలేం.")
@@ -777,6 +796,9 @@ if one_prompt_clicked or manual_edit_clicked:
                     })()
                     broll_assets.append(asset)
                     broll_timeline.append((float(scene["start"]), float(scene["end"]), asset))
+                if not scenes:
+                    st.error("ఈ వీడియోకు సరిపోయే B-Roll scenes Gemini ఇవ్వలేదు. Prompt మార్చి మళ్లీ ప్రయత్నించు.")
+                    st.stop()
                 broll_mode = True
                 broll_side_by_side = True
                 st.success(f"{len(scenes)} B-Roll visuals సిద్ధమయ్యాయి. Final video render అవుతోంది.")
