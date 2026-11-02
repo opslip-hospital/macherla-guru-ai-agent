@@ -748,6 +748,10 @@ if one_prompt_clicked or manual_edit_clicked:
             export_size = "Balanced"
         wants_broll = any(term in prompt_lower for term in ["b-roll", "broll", "బి-రోల్", "visuals", "విజువల్స్"])
         wants_captions = any(term in prompt_lower for term in ["subtitle", "subtitles", "captions", "సబ్‌టైటిల్స్", "క్యాప్షన్స్"])
+        wants_background = any(term in prompt_lower for term in ["change background", "replace background", "remove background", "background replacement", "బ్యాక్‌గ్రౌండ్ మార్చు", "బ్యాక్ గ్రౌండ్ మార్చు"])
+        if wants_background and not (bg_mode or ai_bg_mode):
+            st.error("Background మార్చాలంటే Green/Blue లేదా AI Background Removal mode ON చేసి, కొత్త background image/video upload చేయాలి. ఈ file అవసరాన్ని prompt ఒక్కటితో భర్తీ చేయలేం.")
+            st.stop()
         if (wants_broll or wants_captions) and not editor_gemini_key:
             st.error("ఈ promptలో B-Roll లేదా automatic subtitles ఉన్నాయి. App Secretsలో GEMINI_API_KEY అవసరం.")
             st.stop()
