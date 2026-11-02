@@ -627,14 +627,31 @@ if broll_mode:
         if st.session_state.get("prompt_broll_video_name") == video.name and st.session_state.get("prompt_broll_prompt") == broll_prompt.strip() else []
     )
     if generated_scenes:
-        for scene in generated_scenes:
+        st.caption("ప్రతి visual ఎప్పుడు రావాలో నువ్వే మార్చుకోవచ్చు. Times ఎంచుకున్న clip ప్రారంభం నుంచి secondsలో ఉంటాయి.")
+        for scene_index, scene in enumerate(generated_scenes):
             asset = type("GeneratedBrollAsset", (), {
                 "name": scene["name"],
                 "getvalue": lambda self, data=scene["bytes"]: data,
             })()
+            scene_limit = trim_duration if trim_clip else 3600.0
+            time_col1, time_col2 = st.columns(2)
+            with time_col1:
+                edited_start = st.number_input(
+                    f"Visual {scene_index + 1} start (sec)",
+                    min_value=0.0, max_value=float(scene_limit),
+                    value=min(float(scene["start"]), float(scene_limit)),
+                    step=0.5, key=f"prompt_broll_start_{scene_index}_{video.name}"
+                )
+            with time_col2:
+                edited_end = st.number_input(
+                    f"Visual {scene_index + 1} end (sec)",
+                    min_value=0.5, max_value=max(0.5, float(scene_limit)),
+                    value=min(max(float(scene["end"]), edited_start + 0.5), float(scene_limit)),
+                    step=0.5, key=f"prompt_broll_end_{scene_index}_{video.name}"
+                )
             broll_assets.append(asset)
-            broll_timeline.append((scene["start"], scene["end"], asset))
-            st.image(scene["bytes"], caption=f"AI visual • {scene['start']:.1f}s–{scene['end']:.1f}s", use_container_width=True)
+            broll_timeline.append((edited_start, edited_end, asset))
+            st.image(scene["bytes"], caption=f"AI visual {scene_index + 1}", use_container_width=True)
     if not editor_gemini_key:
         st.warning("Promptతో AI visuals కోసం app Secretsలో GEMINI_API_KEY అవసరం.")
     st.info("Gemini image generationకు API quota/charges వర్తించవచ్చు. Free quota ఉందో లేదో Google AI Studioలో నీ keyకి చెక్ చేయి. Visuals AI-generated still images; generated video clips కావు.")
