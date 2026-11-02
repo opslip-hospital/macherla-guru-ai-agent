@@ -685,9 +685,9 @@ if subtitle_bytes:
     try:
         srt_text = subtitle_bytes.decode("utf-8-sig").replace("\\r\\n", "\\n").replace("\\r", "\\n")
         srt_text = srt_text.strip()
-        if not re.search(r"(?m)^\\s*\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{3}\\s+-->\\s+\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{3}", srt_text):
+        if not re.search(r"(?m)^\s*\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+\d{1,2}:\d{2}:\d{2}[,.]\d{3}", srt_text):
             raise ValueError("SRTలో సరైన timestamp cues కనిపించలేదు. SRT ఫైల్‌ను తెరిచి timing format సరిచూడు.")
-        if not re.search(r"(?m)^\\s*\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{3}\\s+-->\\s+\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{3}\\s*\\n.+", srt_text):
+        if not re.search(r"(?m)^\s*\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s+-->\s+\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s*\n.+", srt_text):
             raise ValueError("SRTలో timestamps ఉన్నాయి కానీ caption text కనిపించలేదు.")
         subtitle_bytes = srt_text.encode("utf-8")
         st.success("SRT గుర్తించబడింది — captions final MP4లో burn అవుతాయి.")
