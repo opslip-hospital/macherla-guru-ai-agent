@@ -59,6 +59,7 @@ elif ai_bg_mode:
     )
     ai_fps = st.selectbox("AI cutout frame sampling", [8, 12, 15], index=1, format_func=lambda x: f"{x} FPS")
     ai_width = st.selectbox("AI cutout detail", [720, 960, 1280], index=1, format_func=lambda x: f"{x}px wide")
+    ai_bg_layout = st.selectbox("New background image layout", ["Fill screen (crop edges)", "Fit full image (black bars)"], index=0)
     background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="ai_background")
     st.info(f"ఈ AI modeకి green/blue screen అవసరం లేదు. సాధారణ room, street, outdoor వంటి backgrounds నుంచీ subjectని వేరు చేయడానికి ప్రయత్నిస్తుంది. CPU processing నెమ్మదిగా ఉంటుంది; ఈ settingతో గరిష్ఠంగా సుమారు {300 / ai_fps:.0f} seconds clip (300 frames) మాత్రమే. Detail/FPS పెంచితే processing సమయం, memory usage పెరుగుతాయి. మొదటిసారి model download కావడానికి internet అవసరం.")
 
@@ -197,8 +198,12 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             if fps_choice == "Keep original":
                 ai_post_filters.append("fps=30")
             post_chain = ("," + ",".join(ai_post_filters)) if ai_post_filters else ""
+            if ai_bg_layout == "Fill screen (crop edges)":
+                bg_filter = f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,crop={w}:{h}"
+            else:
+                bg_filter = f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black"
             filter_graph = (
-                f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,crop={w}:{h}[bg];"
+                f"[0:v]{bg_filter},setsar=1[bg];"
                 f"[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
                 f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[fg];"
                 f"[bg][fg]overlay=0:0:shortest=1{post_chain},format=yuv420p[v]"
