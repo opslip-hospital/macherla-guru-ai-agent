@@ -19,7 +19,7 @@ video = st.file_uploader("ముందుగా వీడియో upload చే
 if not video:
     st.markdown("### అందుబాటులో ఉన్న editing options")
     st.write("Quality enhance • Denoise • Sharpen • Smooth slow motion • 1080p / 2K export • Aspect ratio conversion")
-    st.write("Green-screen footage ఉంటే కొత్త background image కూడా పెట్టవచ్చు.")
+    st.write("AIతో ఏ రకమైన background నుంచైనా subject cutout చేసి కొత్త background పెట్టే experimental option కూడా ఉంది.")
     st.stop()
 
 left, right = st.columns(2)
@@ -35,7 +35,7 @@ with right:
     saturation = st.slider("Color saturation", 0.0, 2.0, 1.05, 0.05)
     fps_choice = st.selectbox("Frame rate", ["Keep original", "30 FPS", "60 FPS"])
     bg_mode = st.checkbox("Green/blue screen background replace", value=False)
-    ai_bg_mode = st.checkbox("🤖 AI subject cutout (experimental)", value=False)
+    ai_bg_mode = st.checkbox("🤖 Remove ANY background with AI (not just green/blue)", value=False)
 
 background = None
 if bg_mode and ai_bg_mode:
@@ -47,8 +47,13 @@ elif bg_mode:
     background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="chroma_background")
     st.caption("ఇది green/blue chroma-key footageకే.")
 elif ai_bg_mode:
-    background = st.file_uploader("AI cutout కోసం కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="ai_background")
-    st.warning("AI cutout CPUపై frame-by-frame పనిచేస్తుంది. Short clips (గరిష్ఠం సుమారు 25 seconds)తో మొదట test చేయండి. Model మొదటిసారి download కావడానికి సమయం, internet అవసరం.")
+    ai_subject_type = st.selectbox(
+        "ఏది cutout చేయాలి?",
+        ["General subject / objects", "People / human characters"],
+        help="General mode వస్తువులు, characters కోసం; People mode మనుషుల కోసం ప్రత్యేకంగా tune చేసిన model."
+    )
+    background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="ai_background")
+    st.info("ఈ AI modeకి green/blue screen అవసరం లేదు. సాధారణ room, street, outdoor వంటి backgrounds నుంచీ subjectని వేరు చేయడానికి ప్రయత్నిస్తుంది. CPU processing నెమ్మదిగా ఉంటుంది; మొదట 25 seconds లోపు clipతో test చేయండి. మొదటిసారి model download కావడానికి internet అవసరం.")
 
 st.caption(
     "2K export అంటే 1440p output. చిన్న resolution వీడియోను 2Kగా export చేయవచ్చు, "
@@ -154,7 +159,8 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
 
             try:
                 with st.spinner("AI subject cutout చేస్తున్నాను. మొదటిసారి model download కావచ్చు; కొంత సమయం పడుతుంది..."):
-                    session = new_session("u2net")
+                    model_name = "isnet-general-use" if ai_subject_type == "General subject / objects" else "u2net_human_seg"
+                    session = new_session(model_name)
                     for frame_path in frame_paths:
                         frame_path.write_bytes(remove(frame_path.read_bytes(), session=session, only_mask=False))
             except Exception as exc:
@@ -226,6 +232,6 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
 st.divider()
 st.caption(
     "Free engine: FFmpeg. ఈ buildలో denoise, color correction, sharpening, slow-motion interpolation, "
-    "1080p/2K export ఉన్నాయి. AI subject cutout experimental modeలో short clipsకే అందుబాటులో ఉంది; "
+    "1080p/2K export ఉన్నాయి. AI any-background subject cutout short clipsకే experimental modeలో ఉంది; "
     "automatic Telugu captions, advanced object tracking ఇంకా లేవు."
 )
