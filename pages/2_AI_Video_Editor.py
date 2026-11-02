@@ -25,7 +25,7 @@ if not video:
 left, right = st.columns(2)
 with left:
     aspect = st.selectbox("Video format", ["9:16 Shorts / Reels", "16:9 YouTube", "1:1 Square"])
-    resolution = st.selectbox("Export quality", ["1080p", "2K"])
+    resolution = st.selectbox("Export quality", ["1080p", "2K"], index=1)
     smooth = st.checkbox("Smooth slow motion (50% speed)", value=False)
     denoise = st.checkbox("Noise reduction", value=True)
     sharpen = st.checkbox("Sharpen details", value=True)
