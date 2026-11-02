@@ -251,6 +251,17 @@ elif ai_bg_mode:
     background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="ai_background")
     st.info(f"ఈ AI modeకి green/blue screen అవసరం లేదు. సాధారణ room, street, outdoor వంటి backgrounds నుంచీ subjectని వేరు చేయడానికి ప్రయత్నిస్తుంది. CPU processing నెమ్మదిగా ఉంటుంది; ఈ settingతో గరిష్ఠంగా సుమారు {300 / ai_fps:.0f} seconds clip (300 frames) మాత్రమే. Detail/FPS పెంచితే processing సమయం, memory usage పెరుగుతాయి. మొదటిసారి model download కావడానికి internet అవసరం.")
 
+st.subheader("📝 Add subtitles / captions")
+subtitle_file = st.file_uploader(
+    "Upload subtitle file (.srt)",
+    type=["srt"],
+    key="subtitle_srt",
+    help="తెలుగు లేదా English SRT ఫైల్ upload చేస్తే వీడియోలో captions కనిపిస్తాయి."
+)
+subtitle_size = st.slider("Subtitle text size", 16, 48, 28, 2)
+subtitle_position = st.selectbox("Subtitle position", ["Bottom", "Middle", "Top"])
+st.caption("SRT subtitlesను వీడియోలో burn-in చేస్తుంది. Automatic speech-to-text captions ఇంకా ఈ buildలో లేవు.")
+
 st.caption(
     "2K export అంటే 1440p output. చిన్న resolution వీడియోను 2Kగా export చేయవచ్చు, "
     "కానీ లేని original detail తిరిగి సృష్టించబడదు. Smooth slow motionలో motion artifacts రావచ్చు."
@@ -317,6 +328,21 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
         else:
             filters.append(f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos")
             filters.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2")
+        if subtitle_file is not None and not bg_mode and not ai_bg_mode:
+            subtitle_path = Path(tmp) / "captions.srt"
+            subtitle_path.write_bytes(subtitle_file.getvalue())
+            alignment, margin = {
+                "Bottom": ("2", "35"),
+                "Middle": ("5", "0"),
+                "Top": ("8", "35"),
+            }[subtitle_position]
+            subtitle_style = (
+                f"FontName=Arial,FontSize={subtitle_size},PrimaryColour=&H00FFFFFF,"
+                f"OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,"
+                f"Alignment={alignment},MarginV={margin}"
+            )
+            subtitle_filter_path = str(subtitle_path).replace("\\", "/").replace(":", "\\:")
+            filters.append(f"subtitles=filename='{subtitle_filter_path}':force_style='{subtitle_style}'")
         filters.append("setsar=1")
         filters.append("format=yuv420p")
         video_crf = {"Best quality": "18", "Balanced": "21", "Smaller file": "25"}[export_size]
