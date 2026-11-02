@@ -827,7 +827,8 @@ if one_prompt_clicked or manual_edit_clicked:
         filters.append("format=yuv420p")
         video_crf = {"Best quality": "18", "Balanced": "21", "Smaller file": "25"}[export_size]
         audio_filters = []
-        if prompt_smooth:
+        # B-Roll keeps the original speaker timing; never slow only the audio.
+        if prompt_smooth and not (broll_mode and broll_assets):
             audio_filters.append("atempo=0.5")
         if not mute_audio and audio_volume != 100:
             audio_filters.append(f"volume={audio_volume / 100:.2f}")
@@ -838,8 +839,8 @@ if one_prompt_clicked or manual_edit_clicked:
         else:
             cmd += ["-i", str(source)]
         if broll_mode and broll_assets:
-            if smooth:
-                st.warning("B-Roll cutaway modeలో slow-motion option ప్రస్తుతం apply కాదు; మిగతా enhancement settings apply అవుతాయి.")
+            if prompt_smooth:
+                st.warning("B-Roll modeలో slow-motion effect apply చేయలేదు; speaker voice sync అలాగే ఉంచాం. మిగతా enhancement settings apply అవుతాయి.")
             valid_timeline = sorted(broll_timeline, key=lambda item: item[0])
             previous_end = 0.0
             timeline_error = None
