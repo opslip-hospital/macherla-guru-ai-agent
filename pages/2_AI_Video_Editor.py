@@ -198,7 +198,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             )
             ai_cmd = [
                 ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
-                "-framerate", "12", "-i", sequence, "-i", str(source),
+                "-framerate", "12", "-start_number", "1", "-i", sequence, "-i", str(source),
                 "-filter_complex", filter_graph,
                 "-map", "[v]", "-map", "2:a?", "-shortest",
             ]
