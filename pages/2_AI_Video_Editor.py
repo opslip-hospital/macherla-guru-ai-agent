@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import re
 import requests
 import subprocess
 import tempfile
@@ -695,14 +696,56 @@ manual_edit_clicked = st.button(
 if one_prompt_clicked or manual_edit_clicked:
     if one_prompt_clicked:
         prompt_lower = edit_prompt.lower()
+        # Apply common editing controls from one natural-language prompt.
         if any(term in prompt_lower for term in ["2k", "1440", "qhd"]):
             resolution = "2K"
-        if "9:16" in prompt_lower or "vertical" in prompt_lower or "portrait" in prompt_lower:
+        elif any(term in prompt_lower for term in ["1080p", "full hd", "full-hd"]):
+            resolution = "1080p"
+        if any(term in prompt_lower for term in ["9:16", "vertical", "portrait", "రీల్స్", "షార్ట్స్"]):
             aspect = "9:16 Portrait"
-        elif "16:9" in prompt_lower or "landscape" in prompt_lower:
+        elif any(term in prompt_lower for term in ["16:9", "landscape", "వైడ్ స్క్రీన్"]):
             aspect = "16:9 Landscape"
-        elif "1:1" in prompt_lower or "square" in prompt_lower:
+        elif any(term in prompt_lower for term in ["1:1", "square", "స్క్వేర్"]):
             aspect = "1:1 Square"
+        if any(term in prompt_lower for term in ["slow motion", "slow-mo", "స్లో మోషన్", "నెమ్మదిగా"]):
+            smooth = True
+        if any(term in prompt_lower for term in ["no denoise", "without denoise", "నాయిస్ తగ్గించవద్దు"]):
+            denoise = False
+        elif any(term in prompt_lower for term in ["denoise", "noise reduction", "remove noise", "నాయిస్ తగ్గించు"]):
+            denoise = True
+        if any(term in prompt_lower for term in ["no sharpen", "without sharpen", "షార్పెన్ వద్దు"]):
+            sharpen = False
+        elif any(term in prompt_lower for term in ["sharpen", "sharp details", "షార్ప్"]):
+            sharpen = True
+        if any(term in prompt_lower for term in ["rotate 90 clockwise", "90° clockwise", "కుడివైపు తిప్పు"]):
+            rotation = "90° clockwise"
+        elif any(term in prompt_lower for term in ["rotate 90 counter", "90° counter-clockwise", "ఎడమవైపు తిప్పు"]):
+            rotation = "90° counter-clockwise"
+        elif any(term in prompt_lower for term in ["rotate 180", "180 degrees", "180°"]):
+            rotation = "180°"
+        if any(term in prompt_lower for term in ["mirror", "flip horizontal", "మిర్రర్", "ఎదురుగా తిప్పు"]):
+            flip_horizontal = True
+        if any(term in prompt_lower for term in ["fill frame", "crop edges", "ఫ్రేమ్ నింపు"]):
+            framing = "Fill frame (crop edges)"
+        elif any(term in prompt_lower for term in ["fit full", "no crop", "పూర్తి వీడియో"]):
+            framing = "Fit full video (bars if needed)"
+        if any(term in prompt_lower for term in ["mute", "silent", "మ్యూట్", "శబ్దం వద్దు"]):
+            mute_audio = True
+        volume_match = re.search(r"(?:volume|audio)\\s*(?:to|at|=)?\\s*(\\d{1,3})\\s*%|వాల్యూమ్\\s*(\\d{1,3})\\s*%", prompt_lower)
+        if volume_match and not mute_audio:
+            volume_value = next((g for g in volume_match.groups() if g is not None), None)
+            if volume_value is not None:
+                audio_volume = max(0, min(200, int(volume_value)))
+        if any(term in prompt_lower for term in ["30 fps", "30fps", "30 ఫ్రేమ్స్"]):
+            fps_choice = "30 FPS"
+        elif any(term in prompt_lower for term in ["60 fps", "60fps", "60 ఫ్రేమ్స్"]):
+            fps_choice = "60 FPS"
+        if any(term in prompt_lower for term in ["small file", "smaller file", "compress", "తక్కువ సైజు"]):
+            export_size = "Smaller file"
+        elif any(term in prompt_lower for term in ["best quality", "maximum quality", "అత్యుత్తమ క్వాలిటీ"]):
+            export_size = "Best quality"
+        elif "balanced" in prompt_lower:
+            export_size = "Balanced"
         wants_broll = any(term in prompt_lower for term in ["b-roll", "broll", "బి-రోల్", "visuals", "విజువల్స్"])
         wants_captions = any(term in prompt_lower for term in ["subtitle", "subtitles", "captions", "సబ్‌టైటిల్స్", "క్యాప్షన్స్"])
         if (wants_broll or wants_captions) and not editor_gemini_key:
@@ -789,7 +832,7 @@ if one_prompt_clicked or manual_edit_clicked:
             filters.extend(["setpts=2*PTS", "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"])
         if fps_choice == "30 FPS":
             filters.append("fps=30")
-        elif fps_choice == "60 FPS" and not smooth:
+        elif fps_choice == "60 FPS" and not prompt_smooth:
             filters.append("fps=60")
         if rotation == "90° clockwise":
             filters.append("transpose=clock")
