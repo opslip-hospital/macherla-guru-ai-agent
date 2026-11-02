@@ -679,6 +679,26 @@ subtitle_bytes = (
     if st.session_state.get("auto_srt_video_name") == video.name
     else None
 )
+if subtitle_bytes:
+    # Normalize common SRT encodings/newlines and reject empty or malformed files
+    # before FFmpeg runs, so a silent subtitle failure is not mistaken for success.
+    try:
+        srt_text = subtitle_bytes.decode("utf-8-sig").replace("\\r\\n", "\\n").replace("\\r", "\\n")
+        srt_text = srt_text.strip()
+        if not re.search(r"(?m)^\\s*\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{3}\\s+-->\\s+\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{3}", srt_text):
+            raise ValueError("SRTలో సరైన timestamp cues కనిపించలేదు. SRT ఫైల్‌ను తెరిచి timing format సరిచూడు.")
+        if not re.search(r"(?m)^\\s*\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{3}\\s+-->\\s+\\d{1,2}:\\d{2}:\\d{2}[,.]\\d{3}\\s*\\n.+", srt_text):
+            raise ValueError("SRTలో timestamps ఉన్నాయి కానీ caption text కనిపించలేదు.")
+        subtitle_bytes = srt_text.encode("utf-8")
+        st.success("SRT గుర్తించబడింది — captions final MP4లో burn అవుతాయి.")
+    except UnicodeDecodeError:
+        st.error("SRT UTF-8 formatలో లేదు. UTF-8గా save చేసి మళ్లీ upload చేయి.")
+        st.stop()
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
+else:
+    st.info("SRT upload చేయలేదు. Final videoలో subtitles ఉండవు.")
 subtitle_size = st.slider("Subtitle text size", 16, 48, 28, 2)
 subtitle_position = st.selectbox("Subtitle position", ["Bottom", "Middle", "Top"])
 st.caption("Gemini captionsకు API quota వర్తిస్తుంది. Local Whisper captions Gemini quota/API key వాడవు; మొదటిసారి model download అవసరం, server CPUపై నెమ్మదిగా పని చేయవచ్చు. రెండు విధానాల్లోనూ final exportకి ముందు Telugu spelling/timing సరిచూసుకో.")
