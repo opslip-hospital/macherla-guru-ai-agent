@@ -348,8 +348,8 @@ def create_srt_with_local_whisper(video_bytes, display_name, language, model_siz
                 rows.append((segment.start, segment.end, text_value))
         if not rows:
             raise ValueError("మాటలు గుర్తించబడలేదు. స్పష్టమైన voice ఉన్న clipతో ప్రయత్నించు.")
-        srt = "\\n\\n".join(
-            f"{index}\\n{stamp(start_s)} --> {stamp(end_s)}\\n{text_value}"
+        srt = "\n\n".join(
+            f"{index}\n{stamp(start_s)} --> {stamp(end_s)}\n{text_value}"
             for index, (start_s, end_s, text_value) in enumerate(rows, start=1)
         )
         return srt.encode("utf-8"), info.language, info.language_probability
