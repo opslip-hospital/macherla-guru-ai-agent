@@ -100,7 +100,7 @@ def create_srt_with_gemini(video_bytes, mime_type, display_name, api_key, langua
             for part in candidate.get("content", {}).get("parts", []):
                 if isinstance(part.get("text"), str):
                     parts.append(part["text"])
-        raw = "\\n".join(parts).replace("```json", "").replace("```", "").strip()
+        raw = "\n".join(parts).replace("```json", "").replace("```", "").strip()
         parsed = json.loads(raw)
         segments = parsed.get("segments", []) if isinstance(parsed, dict) else []
         def stamp(seconds):
@@ -122,8 +122,8 @@ def create_srt_with_gemini(video_bytes, mime_type, display_name, api_key, langua
             if text_value and end_s > start_s:
                 rows.append((start_s, end_s, text_value))
         rows.sort(key=lambda item: item[0])
-        return "\\n\\n".join(
-            f"{index}\\n{stamp(start_s)} --> {stamp(end_s)}\\n{text_value}"
+        return "\n\n".join(
+            f"{index}\n{stamp(start_s)} --> {stamp(end_s)}\n{text_value}"
             for index, (start_s, end_s, text_value) in enumerate(rows, start=1)
         ).encode("utf-8")
     finally:
@@ -700,5 +700,5 @@ st.caption(
     "Free engine: FFmpeg. ఈ buildలో denoise, color correction, sharpening, slow-motion interpolation, "
     "1080p/2K export, frame fit/crop, audio mute/volume, MP4 quality-size presets ఉన్నాయి. "
     "AI any-background subject cutout short clipsకే experimental modeలో ఉంది; "
-    "Gemini automatic Telugu/English captions, SRT burn-in, advanced object tracking ఇంకా లేవు."
+    "Gemini automatic Telugu/English captions and SRT burn-in ఉన్నాయి; advanced object tracking ఇంకా లేదు."
 )
