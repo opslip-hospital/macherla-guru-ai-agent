@@ -152,10 +152,15 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                 st.error("Videoలో frames కనిపించలేదు.")
                 st.stop()
 
-            with st.spinner("AI subject cutout చేస్తున్నాను. మొదటిసారి model download కావచ్చు; కొంత సమయం పడుతుంది..."):
-                session = new_session("u2net")
-                for frame_path in frame_paths:
-                    frame_path.write_bytes(remove(frame_path.read_bytes(), session=session, only_mask=False))
+            try:
+                with st.spinner("AI subject cutout చేస్తున్నాను. మొదటిసారి model download కావచ్చు; కొంత సమయం పడుతుంది..."):
+                    session = new_session("u2net")
+                    for frame_path in frame_paths:
+                        frame_path.write_bytes(remove(frame_path.read_bytes(), session=session, only_mask=False))
+            except Exception as exc:
+                st.error("AI model download లేదా background removalలో సమస్య వచ్చింది.")
+                st.code(str(exc)[-2500:])
+                st.stop()
             sequence = str(frames_dir / "frame_%06d.png")
             ai_cmd = [
                 ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
@@ -220,7 +225,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
 
 st.divider()
 st.caption(
-    "Free engine: FFmpeg. ఈ buildలో actual video processing, denoise, color correction, sharpening, "
-    "slow-motion interpolation, 1080p/2K export ఉన్నాయి. AI subject cutout, automatic Telugu captions, "
-    "advanced object tracking, one-tap background removal ఇంకా ఇందులో లేవు."
+    "Free engine: FFmpeg. ఈ buildలో denoise, color correction, sharpening, slow-motion interpolation, "
+    "1080p/2K export ఉన్నాయి. AI subject cutout experimental modeలో short clipsకే అందుబాటులో ఉంది; "
+    "automatic Telugu captions, advanced object tracking ఇంకా లేవు."
 )
