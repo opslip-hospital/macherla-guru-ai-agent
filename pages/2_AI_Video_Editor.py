@@ -816,12 +816,18 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                 if cue_start > gap_cursor:
                     main_count += 1
                 gap_cursor = cue_end
+            # Add all B-roll inputs first so FFmpeg input indices stay deterministic.
+            for bpath in broll_paths:
+                if bpath.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
+                    cmd += ["-loop", "1", "-i", str(bpath)]
+                else:
+                    cmd += ["-stream_loop", "-1", "-i", str(bpath)]
             # Split the original video stream when multiple speaker segments are needed.
             if main_count > 1:
                 split_outputs = "".join(f"[main_src{i}]" for i in range(main_count))
                 graph_parts.append(f"[0:v]split={main_count}{split_outputs}")
             main_source_index = 0
-            speaker_side_index = input_index + len(valid_timeline)
+            speaker_side_index = 1 + len(valid_timeline)
             if broll_side_by_side:
                 # A second source input keeps the speaker visible during each B-roll cue.
                 if trim_clip:
@@ -844,11 +850,6 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                     segment_index += 1
 
                 bpath = broll_paths[cue_index]
-                is_still = bpath.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]
-                if is_still:
-                    cmd += ["-loop", "1", "-i", str(bpath)]
-                else:
-                    cmd += ["-stream_loop", "-1", "-i", str(bpath)]
                 duration = cue_end - cue_start
                 label = f"broll{segment_index}"
                 if broll_side_by_side:
@@ -869,7 +870,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                         f"{common_chain}{speaker_panel_filter}[{speaker_label}]"
                     )
                     graph_parts.append(
-                        f"[{input_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
+                        f"[{1 + cue_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
                         f"{common_chain}{visual_panel_filter}[{visual_label}]"
                     )
                     graph_parts.append(
@@ -877,11 +878,10 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                     )
                 else:
                     graph_parts.append(
-                        f"[{input_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
+                        f"[{1 + cue_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
                         f"{common_chain}{canvas_filter}[{label}]"
                     )
                 segment_labels.append(f"[{label}]")
-                input_index += 1
                 segment_index += 1
                 cursor = cue_end
 
