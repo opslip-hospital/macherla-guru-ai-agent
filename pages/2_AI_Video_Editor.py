@@ -607,14 +607,22 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             input_index = 1
             cursor = 0.0
             segment_index = 0
+            main_count = sum(1 for cue_start, _, _ in valid_timeline if cue_start > 0) + 1
+            # Split the original video stream when multiple speaker segments are needed.
+            if main_count > 1:
+                split_outputs = "".join(f"[main_src{i}]" for i in range(main_count))
+                graph_parts.append(f"[0:v]split={main_count}{split_outputs}")
+            main_source_index = 0
 
             for cue_index, (cue_start, cue_end, cue_asset) in enumerate(valid_timeline):
                 if cue_start > cursor:
                     label = f"main{segment_index}"
+                    main_source = f"[main_src{main_source_index}]" if main_count > 1 else "[0:v]"
                     graph_parts.append(
-                        f"[0:v]trim=start={cursor}:end={cue_start},setpts=PTS-STARTPTS,"
+                        f"{main_source}trim=start={cursor}:end={cue_start},setpts=PTS-STARTPTS,"
                         f"{common_chain}{canvas_filter}[{label}]"
                     )
+                    main_source_index += 1
                     segment_labels.append(f"[{label}]")
                     segment_index += 1
 
@@ -637,8 +645,9 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
 
             # Keep the remainder of the speaker video after the last B-Roll cue.
             label = f"main{segment_index}"
+            main_source = f"[main_src{main_source_index}]" if main_count > 1 else "[0:v]"
             graph_parts.append(
-                f"[0:v]trim=start={cursor},setpts=PTS-STARTPTS,"
+                f"{main_source}trim=start={cursor},setpts=PTS-STARTPTS,"
                 f"{common_chain}{canvas_filter}[{label}]"
             )
             segment_labels.append(f"[{label}]")
