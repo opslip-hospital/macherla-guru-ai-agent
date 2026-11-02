@@ -37,6 +37,99 @@ with st.expander("ఈ toolలో ఏ prompt ఇవ్వాలి?"):
         language="text",
     )
 
+st.subheader("🎬 Merge multiple videos into one MP4")
+merge_videos = st.file_uploader(
+    "రెండు లేదా అంతకంటే ఎక్కువ videos ఎంచుకోండి",
+    type=["mp4", "mov", "mkv", "webm", "avi"],
+    accept_multiple_files=True,
+    key="merge_video_files",
+    help="వీడియోలు ఎంచుకున్న క్రమంలో ఒకే MP4గా కలుస్తాయి. గరిష్ఠంగా 8 clips."
+)
+merge_format = st.selectbox("Merged video format", ["9:16 Shorts / Reels", "16:9 YouTube", "1:1 Square"], key="merge_format")
+if merge_videos and st.button("🎞️ Merge videos & create one MP4", type="primary"):
+    if len(merge_videos) < 2:
+        st.warning("Merge చేయడానికి కనీసం 2 videos ఎంచుకో.")
+    elif len(merge_videos) > 8:
+        st.warning("ఒకేసారి గరిష్ఠంగా 8 videos మాత్రమే merge చేయగలవు.")
+    else:
+        ffmpeg_merge = imageio_ffmpeg.get_ffmpeg_exe()
+        if merge_format.startswith("9:16"):
+            mw, mh = 720, 1280
+        elif merge_format.startswith("16:9"):
+            mw, mh = 1280, 720
+        else:
+            mw, mh = 720, 720
+        with tempfile.TemporaryDirectory(prefix="macherla_merge_") as merge_tmp:
+            merge_dir = Path(merge_tmp)
+            normalized = []
+            progress = st.progress(0, text="Merge కోసం clips సిద్ధం చేస్తున్నాను...")
+            failed = False
+            try:
+                for idx, uploaded in enumerate(merge_videos, start=1):
+                    input_path = merge_dir / f"input_{idx}{Path(uploaded.name).suffix.lower()}"
+                    output_path = merge_dir / f"normalized_{idx:02d}.mp4"
+                    input_path.write_bytes(uploaded.getvalue())
+                    probe = subprocess.run(
+                        [ffmpeg_merge, "-i", str(input_path)],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    has_audio = "Audio:" in (probe.stderr or "")
+                    normalize_cmd = [ffmpeg_merge, "-y", "-i", str(input_path)]
+                    if not has_audio:
+                        normalize_cmd += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
+                    normalize_cmd += [
+                        "-map", "0:v:0",
+                        "-vf", f"scale={mw}:{mh}:force_original_aspect_ratio=decrease:flags=lanczos,pad={mw}:{mh}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30,setsar=1,format=yuv420p",
+                    ]
+                    if has_audio:
+                        normalize_cmd += ["-map", "0:a:0", "-af", "aresample=async=1:first_pts=0"]
+                    else:
+                        normalize_cmd += ["-map", "1:a:0"]
+                    normalize_cmd += [
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+                        "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k",
+                        "-shortest", "-movflags", "+faststart", str(output_path)
+                    ]
+                    result = subprocess.run(normalize_cmd, capture_output=True, text=True, timeout=1800)
+                    if result.returncode != 0 or not output_path.exists() or output_path.stat().st_size == 0:
+                        st.error(f"{idx}వ వీడియో normalize కాలేదు: {uploaded.name}")
+                        st.code((result.stderr or result.stdout or "FFmpeg error")[-2500:])
+                        failed = True
+                        break
+                    normalized.append(output_path)
+                    progress.progress(idx / len(merge_videos), text=f"{idx}/{len(merge_videos)} clips సిద్ధం")
+                if not failed:
+                    concat_list = merge_dir / "concat_list.txt"
+                    concat_list.write_text(
+                        "".join(f"file '{p.as_posix()}'\\n" for p in normalized),
+                        encoding="utf-8"
+                    )
+                    merged_path = merge_dir / "macherla-guru-merged.mp4"
+                    joined = subprocess.run(
+                        [ffmpeg_merge, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list),
+                         "-c", "copy", "-movflags", "+faststart", str(merged_path)],
+                        capture_output=True, text=True, timeout=1800
+                    )
+                    if joined.returncode != 0 or not merged_path.exists() or merged_path.stat().st_size == 0:
+                        st.error("Videos merge కాలేదు.")
+                        st.code((joined.stderr or joined.stdout or "FFmpeg error")[-3000:])
+                    else:
+                        st.success("అన్ని videos ఒకే MP4గా merge అయ్యాయి!")
+                        merged_bytes = merged_path.read_bytes()
+                        st.video(merged_bytes)
+                        st.download_button(
+                            "⬇️ Download merged MP4",
+                            data=merged_bytes,
+                            file_name="macherla-guru-merged.mp4",
+                            mime="video/mp4",
+                            type="primary"
+                        )
+            except subprocess.TimeoutExpired:
+                st.error("Merge చేయడానికి ఎక్కువ సమయం పట్టింది. చిన్న clipsతో ప్రయత్నించు.")
+            except Exception as exc:
+                st.error(f"Merge error: {exc}")
+
+st.divider()
 video = st.file_uploader("ముందుగా వీడియో upload చేయి", type=["mp4", "mov", "mkv", "webm", "avi"])
 trim_clip = False
 trim_start = 0.0
