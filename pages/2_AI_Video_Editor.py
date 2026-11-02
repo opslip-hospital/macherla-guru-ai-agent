@@ -34,15 +34,21 @@ with right:
     contrast = st.slider("Contrast", 0.70, 1.50, 1.05, 0.05)
     saturation = st.slider("Color saturation", 0.0, 2.0, 1.05, 0.05)
     fps_choice = st.selectbox("Frame rate", ["Keep original", "30 FPS", "60 FPS"])
-    bg_mode = st.checkbox("Chroma-key background replace (green/blue screen footage only)", value=False)
+    bg_mode = st.checkbox("Green/blue screen background replace", value=False)
+    ai_bg_mode = st.checkbox("🤖 AI subject cutout (experimental)", value=False)
 
 background = None
-if bg_mode:
+if bg_mode and ai_bg_mode:
+    st.warning("ఒకేసారి ఒక background removal mode మాత్రమే ఎంచుకోండి.")
+elif bg_mode:
     key_color = st.selectbox("Original screen color", ["Green", "Blue"])
     key_similarity = st.slider("Green/blue removal strength", 0.05, 0.45, 0.18, 0.01)
     key_blend = st.slider("Edge blending", 0.00, 0.25, 0.08, 0.01)
-    background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"])
-    st.caption("గమనిక: ఇది green/blue chroma-key footageకే. Removal strength ఎక్కువ చేస్తే subject edges కూడా పోవచ్చు. సాధారణ వీడియోకు AI background cutout ఇంకా లేదు.")
+    background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="chroma_background")
+    st.caption("ఇది green/blue chroma-key footageకే.")
+elif ai_bg_mode:
+    background = st.file_uploader("AI cutout కోసం కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="ai_background")
+    st.warning("AI cutout CPUపై frame-by-frame పనిచేస్తుంది. Short clips (గరిష్ఠం సుమారు 25 seconds)తో మొదట test చేయండి. Model మొదటిసారి download కావడానికి సమయం, internet అవసరం.")
 
 st.caption(
     "2K export అంటే 1440p output. చిన్న resolution వీడియోను 2Kగా export చేయవచ్చు, "
@@ -55,7 +61,7 @@ edit_prompt = st.text_area(
     help="ఈ మొదటి versionలో promptలోని సాధారణ keywords ఆధారంగా కొన్ని FFmpeg effects ఆటోమేటిక్‌గా apply అవుతాయి."
 )
 
-if st.button("✨ Edit video & create MP4", type="primary", disabled=(bg_mode and background is None)):
+if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode)):
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     with tempfile.TemporaryDirectory(prefix="macherla_editor_") as tmp:
         source = Path(tmp) / ("input" + Path(video.name).suffix.lower())
@@ -106,9 +112,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=(bg_mode an
             bg_path = Path(tmp) / ("background" + Path(background.name).suffix.lower())
             bg_path.write_bytes(background.getvalue())
             cmd += ["-loop", "1", "-i", str(bg_path)]
-            # Keep the foreground alpha channel through scaling and compositing.
-            # The final four filters in the normal path are scale, pad, setsar, format;
-            # apply the visual adjustments before chroma-keying instead.
+            # Preserve alpha while applying chroma-key and compositing.
             fg_chain = ",".join(filters[:-4])
             key_hex = "0x00FF00" if key_color == "Green" else "0x0000FF"
             fg_finish = (
@@ -123,6 +127,61 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=(bg_mode an
                 f"[bg][fg]overlay=0:0:shortest=1,format=yuv420p[v]"
             )
             cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "0:a?"]
+        elif ai_bg_mode and background is not None:
+            # AI segmentation is deliberately limited to short clips to protect free CPU/RAM.
+            from rembg import new_session, remove
+
+            bg_path = Path(tmp) / ("ai_background" + Path(background.name).suffix.lower())
+            bg_path.write_bytes(background.getvalue())
+            frames_dir = Path(tmp) / "ai_frames"
+            frames_dir.mkdir()
+            extract = subprocess.run(
+                [ffmpeg, "-y", "-i", str(source), "-vf", "fps=12,scale=960:-2:flags=lanczos",
+                 "-frames:v", "301", str(frames_dir / "frame_%06d.png")],
+                capture_output=True, text=True, timeout=600,
+            )
+            frame_paths = sorted(frames_dir.glob("frame_*.png"))
+            if extract.returncode != 0:
+                st.error("AI cutout కోసం video frames extract కాలేదు.")
+                st.code((extract.stderr or extract.stdout or "")[-2500:])
+                st.stop()
+            if len(frame_paths) > 300:
+                st.error("AI cutout free CPU modeలో గరిష్ఠంగా సుమారు 25 seconds clip మాత్రమే. వీడియోను చిన్న clipగా trim చేసి మళ్లీ upload చేయండి.")
+                st.stop()
+            if not frame_paths:
+                st.error("Videoలో frames కనిపించలేదు.")
+                st.stop()
+
+            with st.spinner("AI subject cutout చేస్తున్నాను. మొదటిసారి model download కావచ్చు; కొంత సమయం పడుతుంది..."):
+                session = new_session("u2net")
+                for frame_path in frame_paths:
+                    frame_path.write_bytes(remove(frame_path.read_bytes(), session=session, only_mask=False))
+            sequence = str(frames_dir / "frame_%06d.png")
+            ai_cmd = [
+                ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
+                "-framerate", "12", "-i", sequence, "-i", str(source),
+                "-filter_complex",
+                f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,crop={w}:{h}[bg];"
+                f"[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[fg];"
+                f"[bg][fg]overlay=0:0:shortest=1,format=yuv420p[v]",
+                "-map", "[v]", "-map", "2:a?", "-shortest",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
+                "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+                str(output),
+            ]
+            result = subprocess.run(ai_cmd, capture_output=True, text=True, timeout=1800)
+            if result.returncode != 0 or not output.exists():
+                st.error("AI background replacement పూర్తి కాలేదు.")
+                st.code((result.stderr or result.stdout or "Unknown FFmpeg error")[-3500:])
+                st.stop()
+            edited = output.read_bytes()
+            st.success("AI background replacement పూర్తయింది! Final MP4 సిద్ధంగా ఉంది.")
+            st.video(edited)
+            st.download_button("⬇️ Download edited MP4", data=edited,
+                               file_name="macherla-guru-ai-background.mp4",
+                               mime="video/mp4", type="primary")
+            st.stop()
         else:
             cmd += ["-vf", ",".join(filters), "-map", "0:v:0", "-map", "0:a?"]
 
