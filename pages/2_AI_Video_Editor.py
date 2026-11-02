@@ -348,6 +348,14 @@ def create_srt_with_local_whisper(video_bytes, display_name, language, model_siz
                 rows.append((segment.start, segment.end, text_value))
         if not rows:
             raise ValueError("మాటలు గుర్తించబడలేదు. స్పష్టమైన voice ఉన్న clipతో ప్రయత్నించు.")
+        if language_code == "te":
+            combined_text = " ".join(row[2] for row in rows)
+            has_telugu = bool(re.search(r"[\\u0C00-\\u0C7F]", combined_text))
+            has_tamil = bool(re.search(r"[\\u0B80-\\u0BFF]", combined_text))
+            if has_tamil and not has_telugu:
+                raise ValueError("Whisper తెలుగు బదులు Tamil లిపిని ఇచ్చింది. Small modelతో మళ్లీ ప్రయత్నించు; ఈ తప్పు SRTను save చేయలేదు.")
+            if not has_telugu:
+                raise ValueError("Telugu language ఎంచుకున్నా తెలుగు లిపి రాలేదు. Small modelతో మళ్లీ ప్రయత్నించు.")
         srt = "\n\n".join(
             f"{index}\n{stamp(start_s)} --> {stamp(end_s)}\n{text_value}"
             for index, (start_s, end_s, text_value) in enumerate(rows, start=1)
@@ -642,12 +650,22 @@ elif st.button("🎙️ Generate automatic captions with Gemini"):
         st.error(f"Automatic captions తయారు కాలేదు: {exc}")
 
 st.markdown("**🆓 Gemini quota అయిపోయినా captions — Local Whisper**")
+whisper_language = st.selectbox(
+    "Whisper language (తెలుగు వీడియోకు Telugu ఎంచుకో)",
+    ["Telugu", "Auto detect (Telugu / English)", "English"],
+    index=0,
+    key="whisper_language",
+)
 whisper_model_size = st.selectbox(
     "Local caption model",
-    ["tiny", "base"],
-    index=0,
-    format_func=lambda value: "Tiny — త్వరగా, తక్కువ accuracy" if value == "tiny" else "Base — కొంచెం నెమ్మది, మెరుగైన accuracy",
-    help="మొదటిసారి ఎంచుకున్న model సుమారు 75–150 MB download అవుతుంది. Server CPUపై processing జరుగుతుంది.",
+    ["tiny", "base", "small"],
+    index=1,
+    format_func=lambda value: {
+        "tiny": "Tiny — వేగంగా, accuracy తక్కువ",
+        "base": "Base — మధ్యస్థ వేగం",
+        "small": "Small — ఎక్కువ accuracy అవకాశం, చాలా నెమ్మది; సుమారు 460 MB download",
+    }[value],
+    help="Small model మొదటిసారి సుమారు 460 MB download కావచ్చు; server CPU/RAMపై ఎక్కువ సమయం పడుతుంది.",
 )
 if st.button("🎧 Generate free captions (No Gemini quota)"):
     try:
@@ -655,7 +673,7 @@ if st.button("🎧 Generate free captions (No Gemini quota)"):
             whisper_srt, detected_language, language_probability = create_srt_with_local_whisper(
                 video.getvalue(),
                 video.name,
-                caption_language,
+                whisper_language,
                 whisper_model_size,
             )
         st.session_state["auto_srt_bytes"] = whisper_srt
