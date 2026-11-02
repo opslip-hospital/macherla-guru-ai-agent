@@ -599,7 +599,13 @@ if broll_mode:
         key="ai_broll_prompt",
         help="ఏ visuals కావాలో తెలుగులో లేదా Englishలో రాయవచ్చు."
     )
-    st.caption("AI గరిష్ఠంగా 3 generated visual scenes తయారు చేస్తుంది. Original voice/audio అలాగే ఉంటుంది. Generated visuals full-screen cutawaysగా వస్తాయి; speaker వెనుక backgroundగా కాదు.")
+    broll_display_mode = st.selectbox(
+        "B-Roll చూపించే విధానం",
+        ["Full-screen visual cutaway (speaker picture temporarily replaced)", "Speaker + visual side-by-side (speaker remains visible)"],
+        help="Side-by-sideలో speaker ఒక వైపు, సంబంధిత visual మరో వైపు కనిపిస్తాయి. Original voice కొనసాగుతుంది."
+    )
+    broll_side_by_side = broll_display_mode.startswith("Speaker +")
+    st.caption("AI గరిష్ఠంగా 3 visual scenes తయారు చేస్తుంది. Full-screen modeలో visual మాత్రమే కనిపిస్తుంది; side-by-side modeలో speaker కూడా కనిపిస్తాడు. Original voice/audio అలాగే ఉంటుంది.")
     if st.button("🎨 Promptతో visuals generate చేయి", disabled=(not editor_gemini_key or not broll_prompt.strip())):
         try:
             clip_start_for_broll = trim_start if trim_clip else 0.0
@@ -815,6 +821,15 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                 split_outputs = "".join(f"[main_src{i}]" for i in range(main_count))
                 graph_parts.append(f"[0:v]split={main_count}{split_outputs}")
             main_source_index = 0
+            speaker_side_index = input_index + len(valid_timeline)
+            if broll_side_by_side:
+                # A second source input keeps the speaker visible during each B-roll cue.
+                if trim_clip:
+                    cmd += ["-ss", str(trim_start), "-i", str(source)]
+                else:
+                    cmd += ["-i", str(source)]
+                side_outputs = "".join(f"[speaker_side{i}]" for i in range(len(valid_timeline)))
+                graph_parts.append(f"[{speaker_side_index}:v]split={len(valid_timeline)}{side_outputs}")
 
             for cue_index, (cue_start, cue_end, cue_asset) in enumerate(valid_timeline):
                 if cue_start > cursor:
@@ -836,10 +851,35 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                     cmd += ["-stream_loop", "-1", "-i", str(bpath)]
                 duration = cue_end - cue_start
                 label = f"broll{segment_index}"
-                graph_parts.append(
-                    f"[{input_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
-                    f"{common_chain}{canvas_filter}[{label}]"
-                )
+                if broll_side_by_side:
+                    panel_w = max(2, (w // 2) // 2 * 2)
+                    visual_w = w - panel_w
+                    speaker_label = f"speaker_panel{segment_index}"
+                    visual_label = f"visual_panel{segment_index}"
+                    speaker_panel_filter = (
+                        f"scale={panel_w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                        f"pad={panel_w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p"
+                    )
+                    visual_panel_filter = (
+                        f"scale={visual_w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                        f"crop={visual_w}:{h},setsar=1,fps=30,format=yuv420p"
+                    )
+                    graph_parts.append(
+                        f"[speaker_side{cue_index}]trim=start={cue_start}:end={cue_end},setpts=PTS-STARTPTS,"
+                        f"{common_chain}{speaker_panel_filter}[{speaker_label}]"
+                    )
+                    graph_parts.append(
+                        f"[{input_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
+                        f"{common_chain}{visual_panel_filter}[{visual_label}]"
+                    )
+                    graph_parts.append(
+                        f"[{speaker_label}][{visual_label}]hstack=inputs=2:shortest=1[{label}]"
+                    )
+                else:
+                    graph_parts.append(
+                        f"[{input_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
+                        f"{common_chain}{canvas_filter}[{label}]"
+                    )
                 segment_labels.append(f"[{label}]")
                 input_index += 1
                 segment_index += 1
