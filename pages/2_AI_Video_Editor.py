@@ -16,6 +16,18 @@ st.info(
 )
 
 video = st.file_uploader("ముందుగా వీడియో upload చేయి", type=["mp4", "mov", "mkv", "webm", "avi"])
+trim_clip = False
+trim_start = 0.0
+trim_duration = 0.0
+if video:
+    trim_clip = st.checkbox("✂️ Trim only a selected part (optional)", value=False)
+    if trim_clip:
+        trim_col1, trim_col2 = st.columns(2)
+        with trim_col1:
+            trim_start = st.number_input("Start time (seconds)", min_value=0.0, max_value=86400.0, value=0.0, step=1.0)
+        with trim_col2:
+            trim_duration = st.number_input("Clip length (seconds)", min_value=1.0, max_value=3600.0, value=15.0, step=1.0)
+        st.caption("ఉదా: Start 10, Clip length 15 అంటే 10వ second నుంచి 25వ second వరకు edit అవుతుంది.")
 if not video:
     st.markdown("### అందుబాటులో ఉన్న editing options")
     st.write("Quality enhance • Denoise • Sharpen • Smooth slow motion • 1080p / 2K export • Aspect ratio conversion")
@@ -120,7 +132,11 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
         filters.append("setsar=1")
         filters.append("format=yuv420p")
 
-        cmd = [ffmpeg, "-y", "-i", str(source)]
+        cmd = [ffmpeg, "-y"]
+        if trim_clip:
+            cmd += ["-ss", str(trim_start), "-i", str(source), "-t", str(trim_duration)]
+        else:
+            cmd += ["-i", str(source)]
         if bg_mode and background is not None:
             bg_path = Path(tmp) / ("background" + Path(background.name).suffix.lower())
             bg_path.write_bytes(background.getvalue())
@@ -148,18 +164,21 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             bg_path.write_bytes(background.getvalue())
             frames_dir = Path(tmp) / "ai_frames"
             frames_dir.mkdir()
-            extract = subprocess.run(
-                [ffmpeg, "-y", "-i", str(source), "-vf", f"fps={ai_fps},scale={ai_width}:-2:flags=lanczos",
-                 "-frames:v", "301", str(frames_dir / "frame_%06d.png")],
-                capture_output=True, text=True, timeout=600,
-            )
+            extract_cmd = [ffmpeg, "-y"]
+            if trim_clip:
+                extract_cmd += ["-ss", str(trim_start), "-i", str(source), "-t", str(trim_duration)]
+            else:
+                extract_cmd += ["-i", str(source)]
+            extract_cmd += ["-vf", f"fps={ai_fps},scale={ai_width}:-2:flags=lanczos",
+                            "-frames:v", "301", str(frames_dir / "frame_%06d.png")]
+            extract = subprocess.run(extract_cmd, capture_output=True, text=True, timeout=600)
             frame_paths = sorted(frames_dir.glob("frame_*.png"))
             if extract.returncode != 0:
                 st.error("AI cutout కోసం video frames extract కాలేదు.")
                 st.code((extract.stderr or extract.stdout or "")[-2500:])
                 st.stop()
             if len(frame_paths) > 300:
-                st.error("AI cutout free CPU modeలో గరిష్ఠంగా సుమారు 25 seconds clip మాత్రమే. వీడియోను చిన్న clipగా trim చేసి మళ్లీ upload చేయండి.")
+                st.error(f"AI cutoutలో {300 / ai_fps:.0f} seconds పరిమితి దాటింది. AI FPS తగ్గించు లేదా చిన్న clip ఎంచుకో.")
                 st.stop()
             if not frame_paths:
                 st.error("Videoలో frames కనిపించలేదు.")
@@ -192,7 +211,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             # Apply the same enhancement and prompt presets after compositing.
             # The final scale/pad filters are omitted because the composite is already sized.
             ai_post_filters = filters[:-4]
-            # AI cutout frames are extracted at 12 fps to keep CPU/RAM use bounded.
+            # AI cutout frames use the selected sampling rate to bound CPU/RAM use.
             # Upsample the final timeline to a standard delivery rate when the user
             # chooses to keep the original frame rate; this avoids a 12-fps MP4.
             if fps_choice == "Keep original":
@@ -210,8 +229,11 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             )
             ai_cmd = [
                 ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
-                "-framerate", str(ai_fps), "-start_number", "1", "-i", sequence, "-i", str(source),
-                "-filter_complex", filter_graph,
+                "-framerate", str(ai_fps), "-start_number", "1", "-i", sequence,
+            ]
+            if trim_clip:
+                ai_cmd += ["-ss", str(trim_start)]
+            ai_cmd += ["-i", str(source), "-filter_complex", filter_graph,
                 "-map", "[v]", "-map", "2:a?", "-shortest",
             ]
             if smooth:
