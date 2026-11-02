@@ -576,7 +576,9 @@ with left:
     aspect = st.selectbox("Video format", ["9:16 Shorts / Reels", "16:9 YouTube", "1:1 Square"])
     resolution = st.selectbox("Export quality", ["1080p", "2K"], index=1)
     smooth = st.checkbox("Smooth slow motion (50% speed)", value=False)
-    denoise = st.checkbox("Noise reduction", value=True)
+    playback_speed = st.selectbox("Playback speed", ["0.5x", "0.75x", "1x (Normal)", "1.25x", "1.5x", "2x"], index=2)
+    stabilize_video = st.checkbox("🎥 Reduce camera shake (stabilize)", value=False, help="FFmpeg deshake filter; extreme shake may remain.")
+    denoise = st.checkbox("Video noise reduction", value=True)
     sharpen = st.checkbox("Sharpen details", value=True)
     framing = st.selectbox("Frame layout", ["Fit full video (bars if needed)", "Fill frame (crop edges)"])
     rotation = st.selectbox("Rotate video", ["No rotation", "90° clockwise", "180°", "90° counter-clockwise"])
@@ -590,6 +592,8 @@ with right:
     ai_bg_mode = st.checkbox("🤖 Remove ANY background with AI (not just green/blue)", value=False)
     mute_audio = st.checkbox("Mute original audio", value=False)
     audio_volume = st.slider("Original audio volume", 0, 200, 100, 5, disabled=mute_audio)
+    audio_denoise = st.checkbox("🔊 Clean background noise in audio", value=False, disabled=mute_audio)
+    voice_clarity = st.checkbox("🎙️ Improve voice clarity", value=False, disabled=mute_audio)
     export_size = st.selectbox("MP4 file size / quality", ["Best quality", "Balanced", "Smaller file"], index=0)
 
 background = None
@@ -982,6 +986,10 @@ if one_prompt_clicked or manual_edit_clicked:
         prompt_denoise = denoise and not any(term in prompt_text for term in ["no denoise", "without denoise", "నాయిస్ తగ్గించవద్దు"])
         prompt_sharpen = sharpen and not any(term in prompt_text for term in ["no sharpen", "without sharpen", "షార్పెన్ వద్దు"])
         prompt_smooth = smooth or any(term in prompt_text for term in ["slow motion", "స్లో మోషన్"])
+        speed_factor = {"0.5x": 0.5, "0.75x": 0.75, "1x (Normal)": 1.0, "1.25x": 1.25, "1.5x": 1.5, "2x": 2.0}[playback_speed]
+        if stabilize_video:
+            filters.append("deshake=rx=16:ry=16:edge=mirror")
+            prompt_notes.append("Camera-shake reduction (FFmpeg deshake)")
         if prompt_denoise:
             filters.append("hqdn3d=1.5:1.5:6:6")
         filters.append(f"eq=brightness={brightness}:contrast={contrast}:saturation={saturation}")
@@ -989,6 +997,11 @@ if one_prompt_clicked or manual_edit_clicked:
             filters.append("unsharp=5:5:0.7:3:3:0.0")
         if prompt_smooth:
             filters.extend(["setpts=2*PTS", "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"])
+        elif speed_factor != 1.0:
+            filters.append(f"setpts=PTS/{speed_factor:g}")
+            prompt_notes.append(f"Playback speed {speed_factor:g}x")
+            if speed_factor < 1.0:
+                filters.append("minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir")
         if fps_choice == "30 FPS":
             filters.append("fps=30")
         elif fps_choice == "60 FPS" and not prompt_smooth:
@@ -1029,9 +1042,17 @@ if one_prompt_clicked or manual_edit_clicked:
         filters.append("format=yuv420p")
         video_crf = {"Best quality": "18", "Balanced": "21", "Smaller file": "25"}[export_size]
         audio_filters = []
-        # B-Roll keeps the original speaker timing; never slow only the audio.
-        if prompt_smooth and not (broll_mode and broll_assets):
-            audio_filters.append("atempo=0.5")
+        if not mute_audio and audio_denoise:
+            audio_filters.append("afftdn=nr=12:nf=-25")
+        if not mute_audio and voice_clarity:
+            audio_filters.extend(["highpass=f=80", "lowpass=f=12000",
+                                  "acompressor=threshold=0.125:ratio=2:attack=20:release=250:makeup=1.5"])
+        # Keep video and voice speed matched; B-Roll intentionally preserves original timing.
+        if not mute_audio and not (broll_mode and broll_assets):
+            if prompt_smooth:
+                audio_filters.append("atempo=0.5")
+            elif speed_factor != 1.0:
+                audio_filters.append(f"atempo={speed_factor:g}")
         if not mute_audio and audio_volume != 100:
             audio_filters.append(f"volume={audio_volume / 100:.2f}")
 
@@ -1041,8 +1062,8 @@ if one_prompt_clicked or manual_edit_clicked:
         else:
             cmd += ["-i", str(source)]
         if broll_mode and broll_assets:
-            if prompt_smooth:
-                st.warning("B-Roll modeలో slow-motion effect apply చేయలేదు; speaker voice sync అలాగే ఉంచాం. మిగతా enhancement settings apply అవుతాయి.")
+            if prompt_smooth or speed_factor != 1.0:
+                st.warning("B-Roll modeలో speed change apply చేయలేదు; speaker voice sync అలాగే ఉంచాం. మిగతా enhancement settings apply అవుతాయి.")
             valid_timeline = sorted(broll_timeline, key=lambda item: item[0])
             previous_end = 0.0
             timeline_error = None
@@ -1396,8 +1417,9 @@ if one_prompt_clicked or manual_edit_clicked:
 
 st.divider()
 st.caption(
-    "Free engine: FFmpeg. ఈ buildలో denoise, color correction, sharpening, slow-motion interpolation, "
-    "1080p/2K export, frame fit/crop, audio mute/volume, MP4 quality-size presets ఉన్నాయి. "
+    "Free engine: FFmpeg. ఈ buildలో video denoise, camera-shake reduction, audio noise cleanup, voice clarity, "
+    "playback speed, color correction, sharpening, slow-motion interpolation, 1080p/2K export, frame fit/crop, "
+    "audio mute/volume, MP4 quality-size presets ఉన్నాయి. "
     "AI any-background subject cutout short clipsకే experimental modeలో ఉంది; "
     "Gemini automatic Telugu/English captions and SRT burn-in ఉన్నాయి; advanced object tracking ఇంకా లేదు."
 )
