@@ -47,6 +47,12 @@ st.caption(
     "కానీ లేని original detail తిరిగి సృష్టించబడదు. Smooth slow motionలో motion artifacts రావచ్చు."
 )
 
+edit_prompt = st.text_area(
+    "Optional editing prompt",
+    placeholder="ఉదా: cinematic look, face softening, bright colours, smooth slow motion, sharp quality",
+    help="ఈ మొదటి versionలో promptలోని సాధారణ keywords ఆధారంగా కొన్ని FFmpeg effects ఆటోమేటిక్‌గా apply అవుతాయి."
+)
+
 if st.button("✨ Edit video & create MP4", type="primary", disabled=(bg_mode and background is None)):
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     with tempfile.TemporaryDirectory(prefix="macherla_editor_") as tmp:
@@ -62,6 +68,21 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=(bg_mode an
             w, h = ((1440, 1440) if resolution == "2K" else (1080, 1080))
 
         filters = []
+        prompt_text = edit_prompt.lower()
+        prompt_notes = []
+        # Prompt-assisted presets use local FFmpeg filters; no paid AI service is required.
+        if any(word in prompt_text for word in ["smooth", "soft skin", "face smooth", "beauty", "స్మూత్", "ముఖం"]):
+            filters.append("bilateral=sigmaS=8:sigmaR=0.08")
+            prompt_notes.append("Soft smoothing (applied to the full frame, not face-only)")
+        if any(word in prompt_text for word in ["cinematic", "film look", "సినిమాటిక్"]):
+            filters.append("eq=contrast=1.12:saturation=1.12")
+            prompt_notes.append("Cinematic contrast and colour")
+        if any(word in prompt_text for word in ["bright", "brighter", "ప్రకాశం"]):
+            filters.append("eq=brightness=0.04")
+            prompt_notes.append("Brightness boost")
+        if any(word in prompt_text for word in ["vivid", "colourful", "colorful", "vibrant", "రంగులు"]):
+            filters.append("eq=saturation=1.18")
+            prompt_notes.append("Vibrant colours")
         if denoise:
             filters.append("hqdn3d=1.5:1.5:6:6")
         filters.append(f"eq=brightness={brightness}:contrast={contrast}:saturation={saturation}")
@@ -114,6 +135,8 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=(bg_mode an
                 else:
                     edited = output.read_bytes()
                     st.success("Editing పూర్తయింది! Final MP4 సిద్ధంగా ఉంది.")
+                    if prompt_notes:
+                        st.caption("Prompt effects applied: " + ", ".join(prompt_notes))
                     st.video(edited)
                     st.download_button(
                         "⬇️ Download edited MP4",
