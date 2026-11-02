@@ -328,7 +328,8 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
         else:
             filters.append(f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos")
             filters.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2")
-        if subtitle_file is not None and not bg_mode and not ai_bg_mode:
+        subtitle_graph_filter = None
+        if subtitle_file is not None:
             subtitle_path = Path(tmp) / "captions.srt"
             subtitle_path.write_bytes(subtitle_file.getvalue())
             alignment, margin = {
@@ -342,7 +343,9 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                 f"Alignment={alignment},MarginV={margin}"
             )
             subtitle_filter_path = str(subtitle_path).replace("\\", "/").replace(":", "\\:")
-            filters.append(f"subtitles=filename='{subtitle_filter_path}':force_style='{subtitle_style}'")
+            subtitle_graph_filter = f"subtitles=filename='{subtitle_filter_path}':force_style='{subtitle_style}'"
+            if not bg_mode and not ai_bg_mode:
+                filters.append(subtitle_graph_filter)
         filters.append("setsar=1")
         filters.append("format=yuv420p")
         video_crf = {"Best quality": "18", "Balanced": "21", "Smaller file": "25"}[export_size]
@@ -373,7 +376,8 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                 f"[0:v]{fg_chain},{fg_finish}[fg];"
                 f"[1:v]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
                 f"crop={w}:{h},setsar=1[bg];"
-                f"[bg][fg]overlay=0:0:shortest=1,format=yuv420p[v]"
+                f"[bg][fg]overlay=0:0:shortest=1"
+                f"{',' + subtitle_graph_filter if subtitle_graph_filter else ''},format=yuv420p[v]"
             )
             cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "0:a?"]
         elif ai_bg_mode and background is not None:
@@ -452,7 +456,8 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                 f"[0:v]{bg_filter},setsar=1[bg];"
                 f"[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
                 f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[fg];"
-                f"[bg][fg]overlay=0:0:shortest=1{post_chain},format=yuv420p[v]"
+                f"[bg][fg]overlay=0:0:shortest=1{post_chain}"
+                f"{',' + subtitle_graph_filter if subtitle_graph_filter else ''},format=yuv420p[v]"
             )
             ai_cmd = [
                 ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
