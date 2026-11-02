@@ -63,6 +63,8 @@ with left:
     denoise = st.checkbox("Noise reduction", value=True)
     sharpen = st.checkbox("Sharpen details", value=True)
     framing = st.selectbox("Frame layout", ["Fit full video (bars if needed)", "Fill frame (crop edges)"])
+    rotation = st.selectbox("Rotate video", ["No rotation", "90° clockwise", "180°", "90° counter-clockwise"])
+    flip_horizontal = st.checkbox("Mirror video horizontally", value=False)
 with right:
     brightness = st.slider("Brightness", -0.20, 0.20, 0.0, 0.01)
     contrast = st.slider("Contrast", 0.70, 1.50, 1.05, 0.05)
@@ -152,6 +154,14 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             filters.append("fps=30")
         elif fps_choice == "60 FPS" and not smooth:
             filters.append("fps=60")
+        if rotation == "90° clockwise":
+            filters.append("transpose=clock")
+        elif rotation == "180°":
+            filters.extend(["hflip", "vflip"])
+        elif rotation == "90° counter-clockwise":
+            filters.append("transpose=cclock")
+        if flip_horizontal:
+            filters.append("hflip")
         if framing == "Fill frame (crop edges)":
             filters.append(f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos")
             filters.append(f"crop={w}:{h}")
