@@ -350,8 +350,8 @@ def create_srt_with_local_whisper(video_bytes, display_name, language, model_siz
             raise ValueError("మాటలు గుర్తించబడలేదు. స్పష్టమైన voice ఉన్న clipతో ప్రయత్నించు.")
         if language_code == "te":
             combined_text = " ".join(row[2] for row in rows)
-            has_telugu = bool(re.search(r"[\\u0C00-\\u0C7F]", combined_text))
-            has_tamil = bool(re.search(r"[\\u0B80-\\u0BFF]", combined_text))
+            has_telugu = bool(re.search(r"[\u0C00-\u0C7F]", combined_text))
+            has_tamil = bool(re.search(r"[\u0B80-\u0BFF]", combined_text))
             if has_tamil and not has_telugu:
                 raise ValueError("Whisper తెలుగు బదులు Tamil లిపిని ఇచ్చింది. Small modelతో మళ్లీ ప్రయత్నించు; ఈ తప్పు SRTను save చేయలేదు.")
             if not has_telugu:
