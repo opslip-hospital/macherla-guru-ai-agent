@@ -753,7 +753,7 @@ if one_prompt_clicked or manual_edit_clicked:
             f"Resolution: {resolution}",
             f"Noise reduction: {'ON' if denoise else 'OFF'}",
             f"Sharpen: {'ON' if sharpen else 'OFF'}",
-            f"Slow motion: {'ON' if smooth else 'OFF'}",
+            f"Slow motion: {'ON' if smooth and not wants_broll else ('Skipped with B-Roll' if smooth else 'OFF')}",
             f"Frame rate: {fps_choice}",
             f"Audio: {'Muted' if mute_audio else str(audio_volume) + '% volume'}",
             f"Export: {export_size}",
