@@ -1093,6 +1093,7 @@ if one_prompt_clicked or manual_edit_clicked:
                 item for item in filters
                 if not item.startswith(("scale=", "crop=", "pad=", "subtitles=", "setsar=", "format="))
                 and item not in ["setpts=2*PTS", "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"]
+                and not item.startswith("setpts=PTS/")
             ]
             if framing == "Fill frame (crop edges)":
                 canvas_filter = (
