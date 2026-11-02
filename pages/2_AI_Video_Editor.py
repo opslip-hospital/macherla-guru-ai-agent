@@ -52,6 +52,11 @@ elif ai_bg_mode:
         ["General subject / objects", "People / human characters"],
         help="General mode వస్తువులు, characters కోసం; People mode మనుషుల కోసం ప్రత్యేకంగా tune చేసిన model."
     )
+    refine_edges = st.checkbox(
+        "Improve hair / fine edges (slower)",
+        value=False,
+        help="Alpha matting edge refinement. Hair, fur వంటి అంచులకు ఉపయోగపడవచ్చు; CPU processing ఎక్కువ సమయం పడుతుంది."
+    )
     background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="ai_background")
     st.info("ఈ AI modeకి green/blue screen అవసరం లేదు. సాధారణ room, street, outdoor వంటి backgrounds నుంచీ subjectని వేరు చేయడానికి ప్రయత్నిస్తుంది. CPU processing నెమ్మదిగా ఉంటుంది; మొదట 25 seconds లోపు clipతో test చేయండి. మొదటిసారి model download కావడానికి internet అవసరం.")
 
@@ -162,7 +167,20 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                     model_name = "isnet-general-use" if ai_subject_type == "General subject / objects" else "u2net_human_seg"
                     session = new_session(model_name)
                     for frame_path in frame_paths:
-                        frame_path.write_bytes(remove(frame_path.read_bytes(), session=session, only_mask=False))
+                        frame_bytes = frame_path.read_bytes()
+                        if refine_edges:
+                            cutout = remove(
+                                frame_bytes,
+                                session=session,
+                                only_mask=False,
+                                alpha_matting=True,
+                                alpha_matting_foreground_threshold=240,
+                                alpha_matting_background_threshold=10,
+                                alpha_matting_erode_size=10,
+                            )
+                        else:
+                            cutout = remove(frame_bytes, session=session, only_mask=False)
+                        frame_path.write_bytes(cutout)
             except Exception as exc:
                 st.error("AI model download లేదా background removalలో సమస్య వచ్చింది.")
                 st.code(str(exc)[-2500:])
