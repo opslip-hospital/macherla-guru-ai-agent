@@ -493,7 +493,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             filters.append(f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos")
             filters.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2")
         subtitle_graph_filter = None
-        if subtitle_file is not None:
+        if subtitle_bytes is not None:
             subtitle_path = Path(tmp) / "captions.srt"
             subtitle_path.write_bytes(subtitle_bytes)
             alignment, margin = {
@@ -700,5 +700,5 @@ st.caption(
     "Free engine: FFmpeg. ఈ buildలో denoise, color correction, sharpening, slow-motion interpolation, "
     "1080p/2K export, frame fit/crop, audio mute/volume, MP4 quality-size presets ఉన్నాయి. "
     "AI any-background subject cutout short clipsకే experimental modeలో ఉంది; "
-    "automatic Telugu captions, advanced object tracking ఇంకా లేవు."
+    "Gemini automatic Telugu/English captions, SRT burn-in, advanced object tracking ఇంకా లేవు."
 )
