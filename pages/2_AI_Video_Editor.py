@@ -334,6 +334,10 @@ merge_videos = st.file_uploader(
     help="వీడియోలు ఎంచుకున్న క్రమంలో ఒకే MP4గా కలుస్తాయి. గరిష్ఠంగా 8 clips."
 )
 merge_format = st.selectbox("Merged video format", ["9:16 Shorts / Reels", "16:9 YouTube", "1:1 Square"], key="merge_format")
+if merge_videos:
+    total_merge_mb = sum(len(item.getvalue()) for item in merge_videos) / (1024 * 1024)
+    st.progress(1.0, text="All selected clips uploaded — 100%")
+    st.caption(f"{len(merge_videos)} clips received • {total_merge_mb:.1f} MB • 100%")
 if merge_videos and st.button("🎞️ Merge videos & create one MP4", type="primary"):
     if len(merge_videos) < 2:
         st.warning("Merge చేయడానికి కనీసం 2 videos ఎంచుకో.")
@@ -419,6 +423,10 @@ if merge_videos and st.button("🎞️ Merge videos & create one MP4", type="pri
 
 st.divider()
 video = st.file_uploader("ముందుగా వీడియో upload చేయి", type=["mp4", "mov", "mkv", "webm", "avi"])
+if video is not None:
+    uploaded_mb = len(video.getvalue()) / (1024 * 1024)
+    st.progress(1.0, text="Upload complete — 100%")
+    st.caption(f"వీడియో upload అయింది: {uploaded_mb:.1f} MB • 100% received")
 trim_clip = False
 trim_start = 0.0
 trim_duration = 0.0
@@ -669,12 +677,77 @@ st.caption(
 )
 
 edit_prompt = st.text_area(
-    "Optional editing prompt",
-    placeholder="ఉదా: cinematic look, face softening, bright colours, smooth slow motion, sharp quality",
-    help="ఈ మొదటి versionలో promptలోని సాధారణ keywords ఆధారంగా కొన్ని FFmpeg effects ఆటోమేటిక్‌గా apply అవుతాయి."
+    "✨ One Prompt → Video (అన్ని editing సూచనలు ఒకేసారి)",
+    placeholder="ఉదా: ఈ Spider-Man వీడియోను cinematicగా enhance చేయి, B-Roll visuals add చేయి, Telugu subtitles పెట్టి 2K 9:16 MP4గా export చేయి.",
+    help="Promptలో quality, cinematic, smoothing, denoise, sharpen, B-Roll, Telugu/English subtitles, 2K, 9:16 వంటి సూచనలు ఇవ్వవచ్చు."
 )
 
-if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode) or (broll_mode and (not broll_assets or bg_mode or ai_bg_mode))):
+one_prompt_clicked = st.button(
+    "🚀 One Prompt → Create final MP4",
+    type="primary",
+    disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode)
+)
+manual_edit_clicked = st.button(
+    "✨ Advanced optionsతో Edit MP4",
+    disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode) or (broll_mode and (not broll_assets or bg_mode or ai_bg_mode))
+)
+
+if one_prompt_clicked or manual_edit_clicked:
+    if one_prompt_clicked:
+        prompt_lower = edit_prompt.lower()
+        if any(term in prompt_lower for term in ["2k", "1440", "qhd"]):
+            resolution = "2K"
+        if "9:16" in prompt_lower or "vertical" in prompt_lower or "portrait" in prompt_lower:
+            aspect = "9:16 Portrait"
+        elif "16:9" in prompt_lower or "landscape" in prompt_lower:
+            aspect = "16:9 Landscape"
+        elif "1:1" in prompt_lower or "square" in prompt_lower:
+            aspect = "1:1 Square"
+        wants_broll = any(term in prompt_lower for term in ["b-roll", "broll", "బి-రోల్", "visuals", "విజువల్స్"])
+        wants_captions = any(term in prompt_lower for term in ["subtitle", "subtitles", "captions", "సబ్‌టైటిల్స్", "క్యాప్షన్స్"])
+        if (wants_broll or wants_captions) and not editor_gemini_key:
+            st.error("ఈ promptలో B-Roll లేదా automatic subtitles ఉన్నాయి. App Secretsలో GEMINI_API_KEY అవసరం.")
+            st.stop()
+        if wants_broll and (bg_mode or ai_bg_mode):
+            st.error("B-Rollతో Green/Blue లేదా AI Background Removalను ఒకేసారి వాడలేము. ఆ modes OFF చేసి మళ్లీ ప్రయత్నించు.")
+            st.stop()
+        if wants_broll and not broll_assets:
+            try:
+                ratio = "9:16" if aspect.startswith("9:16") else ("16:9" if aspect.startswith("16:9") else "1:1")
+                with st.spinner("Gemini వీడియోను అర్థం చేసుకుని B-Roll visuals తయారు చేస్తోంది..."):
+                    scenes = create_prompt_broll_images(
+                        video.getvalue(), video.type or "video/mp4", video.name,
+                        editor_gemini_key, edit_prompt.strip(), ratio,
+                        trim_start if trim_clip else 0.0,
+                        trim_duration if trim_clip else 0.0,
+                    )
+                broll_assets = []
+                broll_timeline = []
+                for scene in scenes:
+                    asset = type("GeneratedBrollAsset", (), {
+                        "name": scene["name"],
+                        "getvalue": lambda self, data=scene["bytes"]: data,
+                    })()
+                    broll_assets.append(asset)
+                    broll_timeline.append((float(scene["start"]), float(scene["end"]), asset))
+                broll_mode = True
+                broll_side_by_side = True
+                st.success(f"{len(scenes)} B-Roll visuals సిద్ధమయ్యాయి. Final video render అవుతోంది.")
+            except Exception as exc:
+                st.error(f"Prompt B-Roll తయారు కాలేదు: {exc}")
+                st.stop()
+        if wants_captions and subtitle_bytes is None:
+            try:
+                with st.spinner("Gemini Telugu/English subtitles తయారు చేస్తోంది..."):
+                    subtitle_bytes = create_srt_with_gemini(
+                        video.getvalue(), video.type or "video/mp4", video.name,
+                        editor_gemini_key, caption_language,
+                    )
+                if not subtitle_bytes:
+                    st.warning("మాటలు స్పష్టంగా గుర్తించబడలేదు; subtitles లేకుండా కొనసాగుతుంది.")
+            except Exception as exc:
+                st.error(f"Automatic subtitles తయారు కాలేదు: {exc}")
+                st.stop()
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     with tempfile.TemporaryDirectory(prefix="macherla_editor_") as tmp:
         source = Path(tmp) / ("input" + Path(video.name).suffix.lower())
@@ -704,12 +777,15 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
         if any(word in prompt_text for word in ["vivid", "colourful", "colorful", "vibrant", "రంగులు"]):
             filters.append("eq=saturation=1.18")
             prompt_notes.append("Vibrant colours")
-        if denoise:
+        prompt_denoise = denoise or any(term in prompt_text for term in ["denoise", "noise reduction", "remove noise", "నాయిస్ తగ్గించు"])
+        prompt_sharpen = sharpen or any(term in prompt_text for term in ["sharpen", "sharp", "షార్ప్"])
+        prompt_smooth = smooth or any(term in prompt_text for term in ["slow motion", "స్లో మోషన్"])
+        if prompt_denoise:
             filters.append("hqdn3d=1.5:1.5:6:6")
         filters.append(f"eq=brightness={brightness}:contrast={contrast}:saturation={saturation}")
-        if sharpen:
+        if prompt_sharpen:
             filters.append("unsharp=5:5:0.7:3:3:0.0")
-        if smooth:
+        if prompt_smooth:
             filters.extend(["setpts=2*PTS", "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"])
         if fps_choice == "30 FPS":
             filters.append("fps=30")
@@ -751,7 +827,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
         filters.append("format=yuv420p")
         video_crf = {"Best quality": "18", "Balanced": "21", "Smaller file": "25"}[export_size]
         audio_filters = []
-        if smooth:
+        if prompt_smooth:
             audio_filters.append("atempo=0.5")
         if not mute_audio and audio_volume != 100:
             audio_filters.append(f"volume={audio_volume / 100:.2f}")
