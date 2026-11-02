@@ -57,8 +57,10 @@ elif ai_bg_mode:
         value=False,
         help="Alpha matting edge refinement. Hair, fur వంటి అంచులకు ఉపయోగపడవచ్చు; CPU processing ఎక్కువ సమయం పడుతుంది."
     )
+    ai_fps = st.selectbox("AI cutout frame sampling", [8, 12, 15], index=1, format_func=lambda x: f"{x} FPS")
+    ai_width = st.selectbox("AI cutout detail", [720, 960, 1280], index=1, format_func=lambda x: f"{x}px wide")
     background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="ai_background")
-    st.info("ఈ AI modeకి green/blue screen అవసరం లేదు. సాధారణ room, street, outdoor వంటి backgrounds నుంచీ subjectని వేరు చేయడానికి ప్రయత్నిస్తుంది. CPU processing నెమ్మదిగా ఉంటుంది; మొదట 25 seconds లోపు clipతో test చేయండి. మొదటిసారి model download కావడానికి internet అవసరం.")
+    st.info(f"ఈ AI modeకి green/blue screen అవసరం లేదు. సాధారణ room, street, outdoor వంటి backgrounds నుంచీ subjectని వేరు చేయడానికి ప్రయత్నిస్తుంది. CPU processing నెమ్మదిగా ఉంటుంది; ఈ settingతో గరిష్ఠంగా సుమారు {300 / ai_fps:.0f} seconds clip (300 frames) మాత్రమే. Detail/FPS పెంచితే processing సమయం, memory usage పెరుగుతాయి. మొదటిసారి model download కావడానికి internet అవసరం.")
 
 st.caption(
     "2K export అంటే 1440p output. చిన్న resolution వీడియోను 2Kగా export చేయవచ్చు, "
@@ -146,7 +148,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             frames_dir = Path(tmp) / "ai_frames"
             frames_dir.mkdir()
             extract = subprocess.run(
-                [ffmpeg, "-y", "-i", str(source), "-vf", "fps=12,scale=960:-2:flags=lanczos",
+                [ffmpeg, "-y", "-i", str(source), "-vf", f"fps={ai_fps},scale={ai_width}:-2:flags=lanczos",
                  "-frames:v", "301", str(frames_dir / "frame_%06d.png")],
                 capture_output=True, text=True, timeout=600,
             )
@@ -203,7 +205,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             )
             ai_cmd = [
                 ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
-                "-framerate", "12", "-start_number", "1", "-i", sequence, "-i", str(source),
+                "-framerate", str(ai_fps), "-start_number", "1", "-i", sequence, "-i", str(source),
                 "-filter_complex", filter_graph,
                 "-map", "[v]", "-map", "2:a?", "-shortest",
             ]
