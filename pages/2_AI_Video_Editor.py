@@ -15,6 +15,26 @@ st.info(
     "Final MP4ని నువ్వే download చేసుకుని ఉపయోగించవచ్చు."
 )
 
+st.subheader("📱 Photo → Video Person Swap")
+st.write(
+    "కంప్యూటర్/GPU అవసరం లేకుండా phone browserలోనే try చేయవచ్చు. "
+    "ఇది external cloud tool; ఈ editorలో direct rendering కాదు."
+)
+st.link_button("🪄 Open Photo → Video Swap", "https://pvideo.app/p-video-replace", use_container_width=True)
+st.caption(
+    "Source video: MP4/MOV, 3–15 seconds, up to 100 MB. "
+    "Replacement photo: JPG/PNG/WEBP, up to 10 MB. "
+    "Free signup credits ఉంటాయి; credits అయిపోయాక per-second charges ఉంటాయి. "
+    "720pతో చిన్న test మొదలుపెట్టు. Outputను preview చేసి download చేసుకో."
+)
+with st.expander("ఈ toolలో ఏ prompt ఇవ్వాలి?"):
+    st.code(
+        "Replace only the main person in the source video with the person in the reference image. "
+        "Preserve the original actions, body movement, timing, camera, background, other people, "
+        "objects and audio. Do not change the scene. Keep the replacement person's identity consistent.",
+        language="text",
+    )
+
 video = st.file_uploader("ముందుగా వీడియో upload చేయి", type=["mp4", "mov", "mkv", "webm", "avi"])
 trim_clip = False
 trim_start = 0.0
