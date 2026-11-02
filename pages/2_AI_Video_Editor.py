@@ -1,4 +1,7 @@
 import os
+import json
+import time
+import requests
 import subprocess
 import tempfile
 import zipfile
@@ -10,6 +13,130 @@ import streamlit as st
 st.set_page_config(page_title="Macherla Guru AI Video Editor", page_icon="🎞️", layout="wide")
 st.title("🎞️ Macherla Guru — AI Video Editor")
 st.caption("Free-first video editing • FFmpeg engine • YouTube Manager remains separate")
+
+def create_srt_with_gemini(video_bytes, mime_type, display_name, api_key, language):
+    if len(video_bytes) > 100 * 1024 * 1024:
+        raise ValueError("Automatic captions కోసం 100 MB కంటే చిన్న వీడియో ఎంచుకో.")
+    start = requests.post(
+        "https://generativelanguage.googleapis.com/upload/v1beta/files",
+        headers={
+            "x-goog-api-key": api_key,
+            "X-Goog-Upload-Protocol": "resumable",
+            "X-Goog-Upload-Command": "start",
+            "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
+            "X-Goog-Upload-Header-Content-Type": mime_type,
+            "Content-Type": "application/json",
+        },
+        json={"file": {"display_name": display_name}},
+        timeout=60,
+    )
+    start.raise_for_status()
+    upload_url = start.headers.get("X-Goog-Upload-URL")
+    if not upload_url:
+        raise RuntimeError("Gemini upload URL రాలేదు.")
+    finish = requests.post(
+        upload_url,
+        headers={
+            "X-Goog-Upload-Offset": "0",
+            "X-Goog-Upload-Command": "upload, finalize",
+            "Content-Length": str(len(video_bytes)),
+        },
+        data=video_bytes,
+        timeout=300,
+    )
+    finish.raise_for_status()
+    info = finish.json().get("file", {})
+    file_uri = info.get("uri")
+    file_name = info.get("name")
+    if not file_uri or not file_name:
+        raise RuntimeError("Gemini video file వివరాలు రాలేదు.")
+    try:
+        state = info.get("state", "PROCESSING")
+        for _ in range(45):
+            if state == "ACTIVE":
+                break
+            if state == "FAILED":
+                raise RuntimeError("Gemini వీడియోను process చేయలేకపోయింది.")
+            time.sleep(2)
+            check = requests.get(
+                "https://generativelanguage.googleapis.com/v1beta/" + file_name,
+                headers={"x-goog-api-key": api_key},
+                timeout=30,
+            )
+            check.raise_for_status()
+            info = check.json()
+            state = info.get("state", "")
+        if state != "ACTIVE":
+            raise RuntimeError("Gemini processing సమయం ముగిసింది. చిన్న వీడియోతో మళ్లీ ప్రయత్నించు.")
+        language_rule = {
+            "Auto detect (Telugu / English)": "Detect the spoken language automatically; preserve Telugu in Telugu script and English in English.",
+            "Telugu": "Transcribe all speech in Telugu script. Keep unavoidable English words in English.",
+            "English": "Transcribe all speech in English.",
+        }[language]
+        prompt = (
+            "Transcribe the audible dialogue in this video into accurate subtitles. "
+            + language_rule
+            + " Return ONLY valid JSON in this exact shape: {\"segments\":[{\"start\":0.0,\"end\":2.5,\"text\":\"spoken words\"}]}. "
+            "Times must be seconds from the start of the video, each segment must match the actual spoken words and timing, "
+            "keep each subtitle short (ideally no more than 2 lines), do not invent dialogue, music lyrics, or sounds. "
+            "If there is no intelligible speech return {\"segments\":[]}."
+        )
+        response = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [
+                    {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                    {"text": prompt},
+                ]}],
+                "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+            },
+            timeout=300,
+        )
+        response.raise_for_status()
+        data = response.json()
+        parts = []
+        for candidate in data.get("candidates", []):
+            for part in candidate.get("content", {}).get("parts", []):
+                if isinstance(part.get("text"), str):
+                    parts.append(part["text"])
+        raw = "\\n".join(parts).replace("```json", "").replace("```", "").strip()
+        parsed = json.loads(raw)
+        segments = parsed.get("segments", []) if isinstance(parsed, dict) else []
+        def stamp(seconds):
+            millis = max(0, int(float(seconds) * 1000))
+            hours, remainder = divmod(millis, 3600000)
+            minutes, remainder = divmod(remainder, 60000)
+            secs, ms = divmod(remainder, 1000)
+            return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+        rows = []
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            text_value = str(segment.get("text", "")).strip()
+            try:
+                start_s = max(0.0, float(segment.get("start", 0)))
+                end_s = float(segment.get("end", 0))
+            except (TypeError, ValueError):
+                continue
+            if text_value and end_s > start_s:
+                rows.append((start_s, end_s, text_value))
+        rows.sort(key=lambda item: item[0])
+        return "\\n\\n".join(
+            f"{index}\\n{stamp(start_s)} --> {stamp(end_s)}\\n{text_value}"
+            for index, (start_s, end_s, text_value) in enumerate(rows, start=1)
+        ).encode("utf-8")
+    finally:
+        if file_name:
+            try:
+                requests.delete(
+                    "https://generativelanguage.googleapis.com/v1beta/" + file_name,
+                    headers={"x-goog-api-key": api_key},
+                    timeout=20,
+                )
+            except Exception:
+                pass
+
 
 st.info(
     "ఈ Editor YouTube Managerకి వేరే Streamlit page. ఇక్కడ చేసే edits అసలు YouTube channelకి upload కావు. "
@@ -251,16 +378,53 @@ elif ai_bg_mode:
     background = st.file_uploader("కొత్త background image లేదా video", type=["jpg", "jpeg", "png", "webp", "mp4", "mov", "mkv", "webm"], key="ai_background")
     st.info(f"ఈ AI modeకి green/blue screen అవసరం లేదు. సాధారణ room, street, outdoor వంటి backgrounds నుంచీ subjectని వేరు చేయడానికి ప్రయత్నిస్తుంది. CPU processing నెమ్మదిగా ఉంటుంది; ఈ settingతో గరిష్ఠంగా సుమారు {300 / ai_fps:.0f} seconds clip (300 frames) మాత్రమే. Detail/FPS పెంచితే processing సమయం, memory usage పెరుగుతాయి. మొదటిసారి model download కావడానికి internet అవసరం.")
 
-st.subheader("📝 Add subtitles / captions")
+st.subheader("📝 Automatic captions + subtitles")
 subtitle_file = st.file_uploader(
-    "Upload subtitle file (.srt)",
+    "లేదా మీ దగ్గర ఉన్న SRT file upload చేయి",
     type=["srt"],
     key="subtitle_srt",
     help="తెలుగు లేదా English SRT ఫైల్ upload చేస్తే వీడియోలో captions కనిపిస్తాయి."
 )
+try:
+    editor_gemini_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+except Exception:
+    editor_gemini_key = os.getenv("GEMINI_API_KEY", "")
+caption_language = st.selectbox(
+    "Caption language",
+    ["Auto detect (Telugu / English)", "Telugu", "English"]
+)
+if not editor_gemini_key:
+    st.info("Automatic captions కోసం app Secretsలో ఇప్పటికే ఉన్న GEMINI_API_KEY అవసరం. SRT upload మాత్రం key లేకుండానే పనిచేస్తుంది.")
+elif st.button("🎙️ Generate automatic captions with Gemini"):
+    try:
+        with st.spinner("Gemini వీడియోలోని మాటలు విని subtitles తయారు చేస్తోంది..."):
+            generated_srt = create_srt_with_gemini(
+                video.getvalue(),
+                video.type or "video/mp4",
+                video.name,
+                editor_gemini_key,
+                caption_language,
+            )
+        if not generated_srt:
+            st.warning("వీడియోలో స్పష్టమైన మాటలు గుర్తించలేకపోయింది.")
+            st.session_state.pop("auto_srt_bytes", None)
+            st.session_state.pop("auto_srt_video_name", None)
+        else:
+            st.session_state["auto_srt_bytes"] = generated_srt
+            st.session_state["auto_srt_video_name"] = video.name
+            st.success("Automatic subtitles సిద్ధమయ్యాయి. ఇవి Edit video నొక్కినప్పుడు నేరుగా videoలో కలుస్తాయి.")
+            st.download_button("⬇️ Download generated SRT", generated_srt, file_name="macherla-captions.srt", mime="application/x-subrip")
+    except Exception as exc:
+        st.error(f"Automatic captions తయారు కాలేదు: {exc}")
+subtitle_bytes = (
+    subtitle_file.getvalue() if subtitle_file is not None
+    else st.session_state.get("auto_srt_bytes")
+    if st.session_state.get("auto_srt_video_name") == video.name
+    else None
+)
 subtitle_size = st.slider("Subtitle text size", 16, 48, 28, 2)
 subtitle_position = st.selectbox("Subtitle position", ["Bottom", "Middle", "Top"])
-st.caption("SRT subtitlesను వీడియోలో burn-in చేస్తుంది. Automatic speech-to-text captions ఇంకా ఈ buildలో లేవు.")
+st.caption("Gemini speech recognition approximate timestamps ఇవ్వవచ్చు. Final exportకి ముందు subtitlesను చూసి సరిచూసుకో.")
 
 st.caption(
     "2K export అంటే 1440p output. చిన్న resolution వీడియోను 2Kగా export చేయవచ్చు, "
@@ -331,7 +495,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
         subtitle_graph_filter = None
         if subtitle_file is not None:
             subtitle_path = Path(tmp) / "captions.srt"
-            subtitle_path.write_bytes(subtitle_file.getvalue())
+            subtitle_path.write_bytes(subtitle_bytes)
             alignment, margin = {
                 "Bottom": ("2", "35"),
                 "Middle": ("5", "0"),
