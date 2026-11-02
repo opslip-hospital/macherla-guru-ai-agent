@@ -615,12 +615,13 @@ if broll_mode:
                 )
             st.session_state["prompt_broll_scenes"] = generated_scenes
             st.session_state["prompt_broll_video_name"] = video.name
+            st.session_state["prompt_broll_prompt"] = broll_prompt.strip()
             st.success(f"{len(generated_scenes)} AI visuals సిద్ధమయ్యాయి. ఇప్పుడు Edit video నొక్కు.")
         except Exception as exc:
             st.error(f"AI B-Roll తయారు కాలేదు: {exc}")
     generated_scenes = (
         st.session_state.get("prompt_broll_scenes", [])
-        if st.session_state.get("prompt_broll_video_name") == video.name else []
+        if st.session_state.get("prompt_broll_video_name") == video.name and st.session_state.get("prompt_broll_prompt") == broll_prompt.strip() else []
     )
     if generated_scenes:
         for scene in generated_scenes:
