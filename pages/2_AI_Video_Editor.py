@@ -581,6 +581,9 @@ with left:
     denoise = st.checkbox("Video noise reduction", value=True)
     sharpen = st.checkbox("Sharpen details", value=True)
     framing = st.selectbox("Frame layout", ["Fit full video (bars if needed)", "Fill frame (crop edges)"])
+    auto_reframe = st.checkbox("📱 Auto Reframe for Shorts (center crop)", value=False, help="Landscape వీడియోను vertical frameలో center crop చేస్తుంది; ఇది face tracking కాదు.")
+    freeze_last_frame = st.checkbox("🧊 Hold final frame (Freeze Frame)", value=False)
+    freeze_duration = st.slider("Final frame hold duration (seconds)", 1, 8, 2, disabled=not freeze_last_frame)
     rotation = st.selectbox("Rotate video", ["No rotation", "90° clockwise", "180°", "90° counter-clockwise"])
     flip_horizontal = st.checkbox("Mirror video horizontally", value=False)
 with right:
@@ -1014,7 +1017,7 @@ if one_prompt_clicked or manual_edit_clicked:
             filters.append("transpose=cclock")
         if flip_horizontal:
             filters.append("hflip")
-        if framing == "Fill frame (crop edges)":
+        if framing == "Fill frame (crop edges)" or auto_reframe:
             filters.append(f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos")
             filters.append(f"crop={w}:{h}")
         else:
@@ -1038,6 +1041,9 @@ if one_prompt_clicked or manual_edit_clicked:
             subtitle_graph_filter = f"subtitles=filename='{subtitle_filter_path}':force_style='{subtitle_style}'"
             if not bg_mode and not ai_bg_mode:
                 filters.append(subtitle_graph_filter)
+        if freeze_last_frame:
+            filters.append(f"tpad=stop_mode=clone:stop_duration={freeze_duration}")
+            prompt_notes.append(f"Final frame held for {freeze_duration}s")
         filters.append("setsar=1")
         filters.append("format=yuv420p")
         video_crf = {"Best quality": "18", "Balanced": "21", "Smaller file": "25"}[export_size]
@@ -1094,6 +1100,7 @@ if one_prompt_clicked or manual_edit_clicked:
                 if not item.startswith(("scale=", "crop=", "pad=", "subtitles=", "setsar=", "format="))
                 and item not in ["setpts=2*PTS", "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"]
                 and not item.startswith("setpts=PTS/")
+                and not item.startswith("tpad=")
             ]
             if framing == "Fill frame (crop edges)":
                 canvas_filter = (
@@ -1199,6 +1206,9 @@ if one_prompt_clicked or manual_edit_clicked:
                 f"{concat_inputs}concat=n={len(segment_labels)}:v=1:a=0[vbase]"
             )
             final_video_chain = "[vbase]"
+            if freeze_last_frame:
+                graph_parts.append(f"{final_video_chain}tpad=stop_mode=clone:stop_duration={freeze_duration}[vhold]")
+                final_video_chain = "[vhold]"
             if subtitle_graph_filter:
                 graph_parts.append(f"{final_video_chain}{subtitle_graph_filter}[vsub]")
                 final_video_chain = "[vsub]"
