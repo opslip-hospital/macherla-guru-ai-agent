@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+import zipfile
 from pathlib import Path
 
 import imageio_ffmpeg
@@ -49,6 +50,61 @@ if video:
         with trim_col2:
             trim_duration = st.number_input("Clip length (seconds)", min_value=1.0, max_value=3600.0, value=15.0, step=1.0)
         st.caption("ఉదా: Start 10, Clip length 15 అంటే 10వ second నుంచి 25వ second వరకు edit అవుతుంది.")
+if video:
+    st.subheader("✂️ Split video into two clips")
+    split_at = st.number_input(
+        "Split point (seconds from start)",
+        min_value=1.0,
+        max_value=86400.0,
+        value=5.0,
+        step=1.0,
+        help="ఉదా: 5 అంటే మొదటి clip 0–5 seconds, రెండో clip 5 seconds నుంచి video చివరి వరకు."
+    )
+    if st.button("✂️ Create 2 separate clips"):
+        ffmpeg_split = imageio_ffmpeg.get_ffmpeg_exe()
+        with tempfile.TemporaryDirectory(prefix="macherla_split_") as split_tmp:
+            split_source = Path(split_tmp) / ("input" + Path(video.name).suffix.lower())
+            part_one = Path(split_tmp) / "clip_1.mp4"
+            part_two = Path(split_tmp) / "clip_2.mp4"
+            zip_path = Path(split_tmp) / "macherla_split_clips.zip"
+            split_source.write_bytes(video.getvalue())
+            try:
+                first = subprocess.run(
+                    [ffmpeg_split, "-y", "-i", str(split_source), "-t", str(split_at),
+                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                     "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(part_one)],
+                    capture_output=True, text=True, timeout=1800
+                )
+                if first.returncode != 0 or not part_one.exists():
+                    st.error("మొదటి clip తయారు కాలేదు.")
+                    st.code((first.stderr or first.stdout or "FFmpeg error")[-2500:])
+                    st.stop()
+                second = subprocess.run(
+                    [ffmpeg_split, "-y", "-ss", str(split_at), "-i", str(split_source),
+                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                     "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(part_two)],
+                    capture_output=True, text=True, timeout=1800
+                )
+                if second.returncode != 0 or not part_two.exists() or part_two.stat().st_size == 0:
+                    st.error("రెండో clip తయారు కాలేదు. Split point video duration కంటే తక్కువగా ఉందో చూసుకో.")
+                    st.code((second.stderr or second.stdout or "FFmpeg error")[-2500:])
+                    st.stop()
+                with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                    archive.write(part_one, arcname="clip_1.mp4")
+                    archive.write(part_two, arcname="clip_2.mp4")
+                st.success("రెండు clips సిద్ధంగా ఉన్నాయి!")
+                st.download_button(
+                    "⬇️ Download both clips (ZIP)",
+                    data=zip_path.read_bytes(),
+                    file_name="macherla-guru-split-clips.zip",
+                    mime="application/zip",
+                    type="primary"
+                )
+            except subprocess.TimeoutExpired:
+                st.error("Split చేయడానికి ఎక్కువ సమయం పట్టింది. చిన్న వీడియోతో ప్రయత్నించు.")
+            except Exception as exc:
+                st.error(f"Split error: {exc}")
+
 if not video:
     st.markdown("### అందుబాటులో ఉన్న editing options")
     st.write("Quality enhance • Denoise • Sharpen • Smooth slow motion • 1080p / 2K export • Aspect ratio conversion")
