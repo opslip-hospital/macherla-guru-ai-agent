@@ -31,3 +31,6 @@ jobs:
       - name: Smoke-test slow-motion interpolation
         run: |
           ffmpeg -v error -f lavfi -i testsrc2=size=160x90:rate=12:duration=0.5 -vf "setpts=2*PTS,minterpolate=fps=24:mi_mode=mci:mc_mode=aobmc:me_mode=bidir" -f null -
+      - name: Smoke-test speaker-visible B-roll side-by-side layout
+        run: |
+          ffmpeg -v error -f lavfi -i testsrc2=size=320x180:rate=30:duration=1 -f lavfi -i color=c=red:s=320x180:r=30:d=1 -filter_complex "[0:v]scale=160:180:force_original_aspect_ratio=decrease,pad=160:180:(ow-iw)/2:(oh-ih)/2,setsar=1[left];[1:v]scale=160:180:force_original_aspect_ratio=increase,crop=160:180,setsar=1[right];[left][right]hstack=inputs=2:shortest=1,format=yuv420p[out]" -map "[out]" -f null -
