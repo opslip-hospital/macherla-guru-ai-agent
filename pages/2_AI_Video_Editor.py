@@ -731,7 +731,7 @@ if one_prompt_clicked or manual_edit_clicked:
             framing = "Fit full video (bars if needed)"
         if any(term in prompt_lower for term in ["mute", "silent", "మ్యూట్", "శబ్దం వద్దు"]):
             mute_audio = True
-        volume_match = re.search(r"(?:volume|audio)\\s*(?:to|at|=)?\\s*(\\d{1,3})\\s*%|వాల్యూమ్\\s*(\\d{1,3})\\s*%", prompt_lower)
+        volume_match = re.search(r"(?:volume|audio)\s*(?:to|at|=)?\s*(\d{1,3})\s*%|వాల్యూమ్\s*(\d{1,3})\s*%", prompt_lower)
         if volume_match and not mute_audio:
             volume_value = next((g for g in volume_match.groups() if g is not None), None)
             if volume_value is not None:
@@ -820,8 +820,8 @@ if one_prompt_clicked or manual_edit_clicked:
         if any(word in prompt_text for word in ["vivid", "colourful", "colorful", "vibrant", "రంగులు"]):
             filters.append("eq=saturation=1.18")
             prompt_notes.append("Vibrant colours")
-        prompt_denoise = denoise or any(term in prompt_text for term in ["denoise", "noise reduction", "remove noise", "నాయిస్ తగ్గించు"])
-        prompt_sharpen = sharpen or any(term in prompt_text for term in ["sharpen", "sharp", "షార్ప్"])
+        prompt_denoise = denoise and not any(term in prompt_text for term in ["no denoise", "without denoise", "నాయిస్ తగ్గించవద్దు"])
+        prompt_sharpen = sharpen and not any(term in prompt_text for term in ["no sharpen", "without sharpen", "షార్పెన్ వద్దు"])
         prompt_smooth = smooth or any(term in prompt_text for term in ["slow motion", "స్లో మోషన్"])
         if prompt_denoise:
             filters.append("hqdn3d=1.5:1.5:6:6")
