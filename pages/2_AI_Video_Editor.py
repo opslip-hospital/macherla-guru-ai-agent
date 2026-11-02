@@ -189,18 +189,19 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             # Apply the same enhancement and prompt presets after compositing.
             # The final scale/pad filters are omitted because the composite is already sized.
             ai_post_filters = filters[:-4]
-            ai_cmd = [
-                ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
-                "-framerate", "12", "-i", sequence, "-i", str(source),
-                "-filter_complex",
+            post_chain = ("," + ",".join(ai_post_filters)) if ai_post_filters else ""
+            filter_graph = (
                 f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,crop={w}:{h}[bg];"
                 f"[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
                 f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1[fg];"
-                f"[bg][fg]overlay=0:0:shortest=1,format=yuv420p[v]",
+                f"[bg][fg]overlay=0:0:shortest=1{post_chain},format=yuv420p[v]"
+            )
+            ai_cmd = [
+                ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
+                "-framerate", "12", "-i", sequence, "-i", str(source),
+                "-filter_complex", filter_graph,
                 "-map", "[v]", "-map", "2:a?", "-shortest",
             ]
-            if ai_post_filters:
-                ai_cmd += ["-vf", ",".join(ai_post_filters)]
             if smooth:
                 ai_cmd += ["-filter:a", "atempo=0.5"]
             ai_cmd += [
