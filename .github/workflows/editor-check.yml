@@ -28,6 +28,10 @@ jobs:
       - name: Smoke-test chroma-key compositing
         run: |
           ffmpeg -v error -f lavfi -i color=c=green:s=320x180:d=1 -f lavfi -i color=c=red:s=320x180:d=1 -filter_complex "[0:v]chromakey=0x00FF00:0.18:0.08,format=yuva420p[fg];[1:v][fg]overlay=0:0,format=yuv420p[v]" -map "[v]" -f null -
+      - name: Smoke-test video stabilization and audio cleanup
+        run: |
+          ffmpeg -v error -f lavfi -i testsrc2=size=320x180:rate=24:duration=1 -vf "deshake=rx=16:ry=16:edge=mirror" -f null -
+          ffmpeg -v error -f lavfi -i sine=frequency=440:sample_rate=48000:duration=1 -af "afftdn=nr=12:nf=-25,highpass=f=80,lowpass=f=12000,acompressor=threshold=0.125:ratio=2:attack=20:release=250:makeup=1.5,atempo=1.25" -f null -
       - name: Smoke-test slow-motion interpolation
         run: |
           ffmpeg -v error -f lavfi -i testsrc2=size=160x90:rate=12:duration=0.5 -vf "setpts=2*PTS,minterpolate=fps=24:mi_mode=mci:mc_mode=aobmc:me_mode=bidir" -f null -
