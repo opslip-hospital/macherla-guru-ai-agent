@@ -1,4 +1,4 @@
-name: Video editor syntax check
+name: Video editor syntax and FFmpeg smoke checks
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  python-compile:
+  editor-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,3 +18,16 @@ jobs:
           python-version: "3.11"
       - name: Check Python syntax
         run: python -m py_compile pages/2_AI_Video_Editor.py
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Smoke-test enhancement filters
+        run: |
+          ffmpeg -v error -f lavfi -i testsrc2=size=320x180:rate=24:duration=1 -vf "hqdn3d=1.5:1.5:6:6,eq=brightness=0:contrast=1.05:saturation=1.05,unsharp=5:5:0.7:3:3:0.0,scale=640:360:flags=lanczos,pad=640:360:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p" -f null -
+      - name: Smoke-test chroma-key compositing
+        run: |
+          ffmpeg -v error -f lavfi -i color=c=green:s=320x180:d=1 -f lavfi -i color=c=red:s=320x180:d=1 -filter_complex "[0:v]chromakey=0x00FF00:0.18:0.08,format=yuva420p[fg];[1:v][fg]overlay=0:0,format=yuv420p[v]" -map "[v]" -f null -
+      - name: Smoke-test slow-motion interpolation
+        run: |
+          ffmpeg -v error -f lavfi -i testsrc2=size=160x90:rate=12:duration=0.5 -vf "setpts=2*PTS,minterpolate=fps=24:mi_mode=mci:mc_mode=aobmc:me_mode=bidir" -f null -
