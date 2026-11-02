@@ -1,0 +1,20 @@
+name: Video editor syntax check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pages/2_AI_Video_Editor.py"
+      - ".github/workflows/editor-check.yml"
+  workflow_dispatch:
+
+jobs:
+  python-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check Python syntax
+        run: python -m py_compile pages/2_AI_Video_Editor.py
