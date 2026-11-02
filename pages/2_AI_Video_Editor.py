@@ -232,7 +232,7 @@ elif bg_mode:
     key_color = st.selectbox("Original screen color", ["Green", "Blue"])
     key_similarity = st.slider("Green/blue removal strength", 0.05, 0.45, 0.18, 0.01)
     key_blend = st.slider("Edge blending", 0.00, 0.25, 0.08, 0.01)
-    background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="chroma_background")
+    background = st.file_uploader("కొత్త background image లేదా video", type=["jpg", "jpeg", "png", "webp", "mp4", "mov", "mkv", "webm"], key="chroma_background")
     st.caption("ఇది green/blue chroma-key footageకే.")
 elif ai_bg_mode:
     ai_subject_type = st.selectbox(
@@ -248,7 +248,7 @@ elif ai_bg_mode:
     ai_fps = st.selectbox("AI cutout frame sampling", [8, 12, 15], index=1, format_func=lambda x: f"{x} FPS")
     ai_width = st.selectbox("AI cutout detail", [720, 960, 1280], index=1, format_func=lambda x: f"{x}px wide")
     ai_bg_layout = st.selectbox("New background image layout", ["Fill screen (crop edges)", "Fit full image (black bars)"], index=0)
-    background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"], key="ai_background")
+    background = st.file_uploader("కొత్త background image లేదా video", type=["jpg", "jpeg", "png", "webp", "mp4", "mov", "mkv", "webm"], key="ai_background")
     st.info(f"ఈ AI modeకి green/blue screen అవసరం లేదు. సాధారణ room, street, outdoor వంటి backgrounds నుంచీ subjectని వేరు చేయడానికి ప్రయత్నిస్తుంది. CPU processing నెమ్మదిగా ఉంటుంది; ఈ settingతో గరిష్ఠంగా సుమారు {300 / ai_fps:.0f} seconds clip (300 frames) మాత్రమే. Detail/FPS పెంచితే processing సమయం, memory usage పెరుగుతాయి. మొదటిసారి model download కావడానికి internet అవసరం.")
 
 st.subheader("📝 Add subtitles / captions")
@@ -363,7 +363,8 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
         if bg_mode and background is not None:
             bg_path = Path(tmp) / ("background" + Path(background.name).suffix.lower())
             bg_path.write_bytes(background.getvalue())
-            cmd += ["-loop", "1", "-i", str(bg_path)]
+            bg_is_video = bg_path.suffix.lower() in [".mp4", ".mov", ".mkv", ".webm"]
+            cmd += (["-stream_loop", "-1", "-i", str(bg_path)] if bg_is_video else ["-loop", "1", "-i", str(bg_path)])
             # Preserve alpha while applying chroma-key and compositing.
             fg_chain = ",".join(filters[:-4])
             key_hex = "0x00FF00" if key_color == "Green" else "0x0000FF"
@@ -460,7 +461,9 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
                 f"{',' + subtitle_graph_filter if subtitle_graph_filter else ''},format=yuv420p[v]"
             )
             ai_cmd = [
-                ffmpeg, "-y", "-loop", "1", "-i", str(bg_path),
+                ffmpeg, "-y",
+                *(["-stream_loop", "-1"] if bg_path.suffix.lower() in [".mp4", ".mov", ".mkv", ".webm"] else ["-loop", "1"]),
+                "-i", str(bg_path),
                 "-framerate", str(ai_fps), "-start_number", "1", "-i", sequence,
             ]
             if trim_clip:
