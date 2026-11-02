@@ -300,6 +300,60 @@ def create_srt_with_gemini(video_bytes, mime_type, display_name, api_key, langua
                 pass
 
 
+
+@st.cache_resource(show_spinner=False)
+def load_local_whisper_model(model_size):
+    from faster_whisper import WhisperModel
+    return WhisperModel(
+        model_size,
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=2,
+        num_workers=1,
+    )
+
+
+def create_srt_with_local_whisper(video_bytes, display_name, language, model_size):
+    """Create SRT locally with Whisper; no Gemini key or API quota is used."""
+    import tempfile
+
+    language_code = {
+        "Auto detect (Telugu / English)": None,
+        "Telugu": "te",
+        "English": "en",
+    }.get(language)
+    with tempfile.TemporaryDirectory(prefix="macherla_whisper_") as temp_dir:
+        suffix = Path(display_name).suffix or ".mp4"
+        video_path = Path(temp_dir) / ("source" + suffix)
+        video_path.write_bytes(video_bytes)
+        model = load_local_whisper_model(model_size)
+        segments, info = model.transcribe(
+            str(video_path),
+            language=language_code,
+            task="transcribe",
+            beam_size=1,
+            vad_filter=True,
+            condition_on_previous_text=False,
+        )
+        def stamp(seconds):
+            millis = max(0, int(float(seconds) * 1000))
+            hours, remainder = divmod(millis, 3600000)
+            minutes, remainder = divmod(remainder, 60000)
+            secs, ms = divmod(remainder, 1000)
+            return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
+        rows = []
+        for segment in segments:
+            text_value = str(segment.text).strip()
+            if text_value and segment.end > segment.start:
+                rows.append((segment.start, segment.end, text_value))
+        if not rows:
+            raise ValueError("మాటలు గుర్తించబడలేదు. స్పష్టమైన voice ఉన్న clipతో ప్రయత్నించు.")
+        srt = "\\n\\n".join(
+            f"{index}\\n{stamp(start_s)} --> {stamp(end_s)}\\n{text_value}"
+            for index, (start_s, end_s, text_value) in enumerate(rows, start=1)
+        )
+        return srt.encode("utf-8"), info.language, info.language_probability
+
 st.info(
     "ఈ Editor YouTube Managerకి వేరే Streamlit page. ఇక్కడ చేసే edits అసలు YouTube channelకి upload కావు. "
     "Final MP4ని నువ్వే download చేసుకుని ఉపయోగించవచ్చు."
@@ -586,6 +640,39 @@ elif st.button("🎙️ Generate automatic captions with Gemini"):
             st.download_button("⬇️ Download generated SRT", generated_srt, file_name="macherla-captions.srt", mime="application/x-subrip")
     except Exception as exc:
         st.error(f"Automatic captions తయారు కాలేదు: {exc}")
+
+st.markdown("**🆓 Gemini quota అయిపోయినా captions — Local Whisper**")
+whisper_model_size = st.selectbox(
+    "Local caption model",
+    ["tiny", "base"],
+    index=0,
+    format_func=lambda value: "Tiny — త్వరగా, తక్కువ accuracy" if value == "tiny" else "Base — కొంచెం నెమ్మది, మెరుగైన accuracy",
+    help="మొదటిసారి ఎంచుకున్న model సుమారు 75–150 MB download అవుతుంది. Server CPUపై processing జరుగుతుంది.",
+)
+if st.button("🎧 Generate free captions (No Gemini quota)"):
+    try:
+        with st.spinner("Whisper model load/download చేసి captions తయారు చేస్తోంది. మొదటిసారి కొంత సమయం పట్టవచ్చు..."):
+            whisper_srt, detected_language, language_probability = create_srt_with_local_whisper(
+                video.getvalue(),
+                video.name,
+                caption_language,
+                whisper_model_size,
+            )
+        st.session_state["auto_srt_bytes"] = whisper_srt
+        st.session_state["auto_srt_video_name"] = video.name
+        st.success(
+            f"Local Whisper captions సిద్ధం! గుర్తించిన భాష: {detected_language} "
+            f"(confidence {language_probability:.0%}). Edit video నొక్కితే subtitles కలుస్తాయి."
+        )
+        st.download_button(
+            "⬇️ Download Whisper SRT",
+            whisper_srt,
+            file_name="macherla-whisper-captions.srt",
+            mime="application/x-subrip",
+        )
+    except Exception as exc:
+        st.error(f"Local Whisper captions తయారు కాలేదు: {exc}")
+
 subtitle_bytes = (
     subtitle_file.getvalue() if subtitle_file is not None
     else st.session_state.get("auto_srt_bytes")
@@ -594,7 +681,7 @@ subtitle_bytes = (
 )
 subtitle_size = st.slider("Subtitle text size", 16, 48, 28, 2)
 subtitle_position = st.selectbox("Subtitle position", ["Bottom", "Middle", "Top"])
-st.caption("Gemini speech recognition approximate timestamps ఇవ్వవచ్చు. API free quota / rate limits వర్తిస్తాయి; billing enabled అయితే charges రావచ్చు. Final exportకి ముందు subtitlesను చూసి సరిచూసుకో.")
+st.caption("Gemini captionsకు API quota వర్తిస్తుంది. Local Whisper captions Gemini quota/API key వాడవు; మొదటిసారి model download అవసరం, server CPUపై నెమ్మదిగా పని చేయవచ్చు. రెండు విధానాల్లోనూ final exportకి ముందు Telugu spelling/timing సరిచూసుకో.")
 
 st.subheader("🎙️ Promptతో ఆటోమేటిక్ B-Roll visuals")
 st.caption("ఒక prompt రాయి. Gemini వీడియోలోని మాటల్ని అర్థం చేసుకుని, సరిపోయే visualsను generate చేసి, voice కొనసాగుతుండగా సరైన timingలో చూపిస్తుంది.")
