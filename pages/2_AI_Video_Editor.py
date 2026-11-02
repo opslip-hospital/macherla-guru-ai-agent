@@ -111,6 +111,9 @@ def create_prompt_broll_images(video_bytes, mime_type, display_name, api_key, us
                 scene_end = float(scene.get("end", 0))
             except (TypeError, ValueError):
                 continue
+            if clip_duration > 0:
+                scene_start = min(scene_start, clip_duration)
+                scene_end = min(scene_end, clip_duration)
             if scene_end <= scene_start:
                 continue
             visual_prompt = (
