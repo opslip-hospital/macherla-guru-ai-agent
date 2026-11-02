@@ -89,7 +89,7 @@ def create_srt_with_gemini(video_bytes, mime_type, display_name, api_key, langua
                     {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
                     {"text": prompt},
                 ]}],
-                "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+                "generationConfig": {"responseMimeType": "application/json"},
             },
             timeout=300,
         )
@@ -424,7 +424,7 @@ subtitle_bytes = (
 )
 subtitle_size = st.slider("Subtitle text size", 16, 48, 28, 2)
 subtitle_position = st.selectbox("Subtitle position", ["Bottom", "Middle", "Top"])
-st.caption("Gemini speech recognition approximate timestamps ఇవ్వవచ్చు. Final exportకి ముందు subtitlesను చూసి సరిచూసుకో.")
+st.caption("Gemini speech recognition approximate timestamps ఇవ్వవచ్చు. API free quota / rate limits వర్తిస్తాయి; billing enabled అయితే charges రావచ్చు. Final exportకి ముందు subtitlesను చూసి సరిచూసుకో.")
 
 st.caption(
     "2K export అంటే 1440p output. చిన్న resolution వీడియోను 2Kగా export చేయవచ్చు, "
