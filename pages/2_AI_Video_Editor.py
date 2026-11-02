@@ -39,8 +39,10 @@ with right:
 background = None
 if bg_mode:
     key_color = st.selectbox("Original screen color", ["Green", "Blue"])
+    key_similarity = st.slider("Green/blue removal strength", 0.05, 0.45, 0.18, 0.01)
+    key_blend = st.slider("Edge blending", 0.00, 0.25, 0.08, 0.01)
     background = st.file_uploader("కొత్త background image", type=["jpg", "jpeg", "png", "webp"])
-    st.caption("గమనిక: ఇది green/blue chroma-key footageకే. సాధారణ వీడియోలో వ్యక్తిని AIతో background నుంచి వేరు చేసే feature ఈ మొదటి versionలో లేదు.")
+    st.caption("గమనిక: ఇది green/blue chroma-key footageకే. Removal strength ఎక్కువ చేస్తే subject edges కూడా పోవచ్చు. సాధారణ వీడియోకు AI background cutout ఇంకా లేదు.")
 
 st.caption(
     "2K export అంటే 1440p output. చిన్న resolution వీడియోను 2Kగా export చేయవచ్చు, "
@@ -104,14 +106,21 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=(bg_mode an
             bg_path = Path(tmp) / ("background" + Path(background.name).suffix.lower())
             bg_path.write_bytes(background.getvalue())
             cmd += ["-loop", "1", "-i", str(bg_path)]
-            # Chroma key is intentionally explicit: it does not remove arbitrary backgrounds.
-            fg_chain = ",".join(filters[:-3]) if len(filters) > 3 else ",".join(filters)
+            # Keep the foreground alpha channel through scaling and compositing.
+            # The final four filters in the normal path are scale, pad, setsar, format;
+            # apply the visual adjustments before chroma-keying instead.
+            fg_chain = ",".join(filters[:-4])
             key_hex = "0x00FF00" if key_color == "Green" else "0x0000FF"
-            final_scale = f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
+            fg_finish = (
+                f"chromakey={key_hex}:{key_similarity}:{key_blend},format=yuva420p,"
+                f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1"
+            )
             graph = (
-                f"[0:v]{fg_chain},chromakey={key_hex}:0.18:0.08[fg];"
-                f"[1:v]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,crop={w}:{h}[bg];"
-                f"[bg][fg]overlay=(W-w)/2:(H-h)/2,{final_scale}[v]"
+                f"[0:v]{fg_chain},{fg_finish}[fg];"
+                f"[1:v]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                f"crop={w}:{h},setsar=1[bg];"
+                f"[bg][fg]overlay=0:0:shortest=1,format=yuv420p[v]"
             )
             cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "0:a?"]
         else:
