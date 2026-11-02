@@ -327,14 +327,22 @@ def create_srt_with_local_whisper(video_bytes, display_name, language, model_siz
         video_path = Path(temp_dir) / ("source" + suffix)
         video_path.write_bytes(video_bytes)
         model = load_local_whisper_model(model_size)
-        segments, info = model.transcribe(
-            str(video_path),
-            language=language_code,
-            task="transcribe",
-            beam_size=1,
-            vad_filter=True,
-            condition_on_previous_text=False,
-        )
+        whisper_options = {
+            "language": language_code,
+            "task": "transcribe",
+            "beam_size": 5 if language_code == "te" else 3,
+            "best_of": 5 if language_code == "te" else 3,
+            "temperature": 0.0,
+            "vad_filter": True,
+            "condition_on_previous_text": True,
+        }
+        if language_code == "te":
+            # Bias multilingual Whisper toward Telugu orthography, not Tamil-script transliteration.
+            whisper_options["initial_prompt"] = (
+                "తెలుగు భాషలో మాట్లాడుతున్నారు. మాటలను సహజమైన తెలుగు పదాలతో "
+                "తెలుగు లిపిలోనే రాయండి. తమిళ అక్షరాలు లేదా ఆంగ్ల లిప్యంతరీకరణ వాడవద్దు."
+            )
+        segments, info = model.transcribe(str(video_path), **whisper_options)
         def stamp(seconds):
             millis = max(0, int(float(seconds) * 1000))
             hours, remainder = divmod(millis, 3600000)
@@ -353,9 +361,9 @@ def create_srt_with_local_whisper(video_bytes, display_name, language, model_siz
             has_telugu = bool(re.search(r"[\u0C00-\u0C7F]", combined_text))
             has_tamil = bool(re.search(r"[\u0B80-\u0BFF]", combined_text))
             if has_tamil and not has_telugu:
-                raise ValueError("Whisper తెలుగు బదులు Tamil లిపిని ఇచ్చింది. Small modelతో మళ్లీ ప్రయత్నించు; ఈ తప్పు SRTను save చేయలేదు.")
+                raise ValueError(f"Whisper Telugu బదులు Tamil లిపి ఇచ్చింది (detected language: {info.language}, confidence: {info.language_probability:.0%}). Telugu prompt + accurate decodingతో కూడా ఇది వస్తే, ఈ audio/model combinationలో Whisper సరైన తెలుగు ఇవ్వలేకపోతోంది; తప్పు SRT save చేయలేదు.")
             if not has_telugu:
-                raise ValueError("Telugu language ఎంచుకున్నా తెలుగు లిపి రాలేదు. Small modelతో మళ్లీ ప్రయత్నించు.")
+                raise ValueError(f"Telugu ఎంచుకున్నా తెలుగు లిపి రాలేదు (detected language: {info.language}, confidence: {info.language_probability:.0%}). తప్పు SRT save చేయలేదు.")
         srt = "\n\n".join(
             f"{index}\n{stamp(start_s)} --> {stamp(end_s)}\n{text_value}"
             for index, (start_s, end_s, text_value) in enumerate(rows, start=1)
