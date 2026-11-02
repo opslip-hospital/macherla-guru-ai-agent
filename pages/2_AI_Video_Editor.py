@@ -7,6 +7,164 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+ 
+def create_prompt_broll_images(video_bytes, mime_type, display_name, api_key, user_prompt, aspect_ratio, clip_start=0.0, clip_duration=0.0):
+    """Analyze speech in the source video, then generate timed still B-roll images."""
+    if len(video_bytes) > 100 * 1024 * 1024:
+        raise ValueError("AI Prompt B-Roll కోసం 100 MB కంటే చిన్న వీడియో ఎంచుకో.")
+    start = requests.post(
+        "https://generativelanguage.googleapis.com/upload/v1beta/files",
+        headers={
+            "x-goog-api-key": api_key,
+            "X-Goog-Upload-Protocol": "resumable",
+            "X-Goog-Upload-Command": "start",
+            "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
+            "X-Goog-Upload-Header-Content-Type": mime_type,
+            "Content-Type": "application/json",
+        },
+        json={"file": {"display_name": display_name}},
+        timeout=60,
+    )
+    start.raise_for_status()
+    upload_url = start.headers.get("X-Goog-Upload-URL")
+    if not upload_url:
+        raise RuntimeError("Gemini upload URL రాలేదు.")
+    finish = requests.post(
+        upload_url,
+        headers={
+            "X-Goog-Upload-Offset": "0",
+            "X-Goog-Upload-Command": "upload, finalize",
+            "Content-Length": str(len(video_bytes)),
+        },
+        data=video_bytes,
+        timeout=300,
+    )
+    finish.raise_for_status()
+    info = finish.json().get("file", {})
+    file_uri, file_name = info.get("uri"), info.get("name")
+    if not file_uri or not file_name:
+        raise RuntimeError("Gemini video file వివరాలు రాలేదు.")
+    try:
+        state = info.get("state", "PROCESSING")
+        for _ in range(45):
+            if state == "ACTIVE":
+                break
+            if state == "FAILED":
+                raise RuntimeError("Gemini వీడియోను process చేయలేకపోయింది.")
+            time.sleep(2)
+            check = requests.get(
+                "https://generativelanguage.googleapis.com/v1beta/" + file_name,
+                headers={"x-goog-api-key": api_key},
+                timeout=30,
+            )
+            check.raise_for_status()
+            info = check.json()
+            state = info.get("state", "")
+        if state != "ACTIVE":
+            raise RuntimeError("Gemini video processing timeout. చిన్న clipతో ప్రయత్నించు.")
+
+        selected_range = (
+            f"Analyze only the clip from {clip_start:.2f} seconds for {clip_duration:.2f} seconds, "
+            "and return timestamps relative to the beginning of that selected clip."
+            if clip_duration > 0 else
+            "Analyze the whole video and return timestamps relative to the beginning of the video."
+        )
+        storyboard_prompt = (
+            "Listen to the spoken words in this video and create 3 short visual B-roll cutaways "
+            "that directly illustrate the topics being discussed. " + selected_range +
+            " The B-roll replaces the speaker picture temporarily, but the original voice will continue. "
+            "Choose non-overlapping moments where a relevant visual would help the viewer. "
+            "Each scene should last about 2 to 4 seconds and be within the video duration. "
+            "Respect this user's visual direction: " + user_prompt + ". "
+            "Return ONLY valid JSON: {\"scenes\":[{\"start\":2.0,\"end\":5.0,"
+            "\"image_prompt\":\"Detailed visual description, no text or watermark\"}]}. "
+            "Use 3 scenes maximum, no invented factual labels or text in images. "
+            "If speech is unclear, create visuals for the overall subject of the video."
+        )
+        analysis = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+            json={
+                "contents": [{"parts": [
+                    {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                    {"text": storyboard_prompt},
+                ]}],
+                "generationConfig": {"responseMimeType": "application/json"},
+            },
+            timeout=300,
+        )
+        analysis.raise_for_status()
+        response_data = analysis.json()
+        text_parts = [
+            part["text"]
+            for candidate in response_data.get("candidates", [])
+            for part in candidate.get("content", {}).get("parts", [])
+            if isinstance(part.get("text"), str)
+        ]
+        raw = "\n".join(text_parts).replace("```json", "").replace("```", "").strip()
+        storyboard = json.loads(raw)
+        scenes = storyboard.get("scenes", []) if isinstance(storyboard, dict) else []
+        generated = []
+        for scene in scenes[:3]:
+            try:
+                scene_start = max(0.0, float(scene.get("start", 0)))
+                scene_end = float(scene.get("end", 0))
+            except (TypeError, ValueError):
+                continue
+            if scene_end <= scene_start:
+                continue
+            visual_prompt = (
+                "Create a photorealistic cinematic B-roll still image for a video cutaway. "
+                + str(scene.get("image_prompt", ""))
+                + " User style direction: " + user_prompt
+                + ". No captions, letters, logos, watermarks, borders, or UI. "
+                "Strong clear subject, realistic details, professional video footage look."
+            )
+            image_response = requests.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent",
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": visual_prompt}]}],
+                    "generationConfig": {
+                        "responseModalities": ["TEXT", "IMAGE"],
+                        "imageConfig": {"aspectRatio": aspect_ratio},
+                    },
+                },
+                timeout=300,
+            )
+            image_response.raise_for_status()
+            image_data = image_response.json()
+            image_bytes = None
+            for candidate in image_data.get("candidates", []):
+                for part in candidate.get("content", {}).get("parts", []):
+                    inline = part.get("inlineData") or part.get("inline_data")
+                    if inline and inline.get("data"):
+                        import base64
+                        image_bytes = base64.b64decode(inline["data"])
+                        break
+                if image_bytes:
+                    break
+            if image_bytes:
+                generated.append({
+                    "name": f"ai_broll_{len(generated) + 1}.png",
+                    "bytes": image_bytes,
+                    "start": scene_start,
+                    "end": scene_end,
+                })
+        if not generated:
+            raise RuntimeError("Gemini visuals తయారు చేయలేదు. API quota/model access ఉందో చూసి మళ్లీ ప్రయత్నించు.")
+        return generated
+    finally:
+        try:
+            requests.delete(
+                "https://generativelanguage.googleapis.com/v1beta/" + file_name,
+                headers={"x-goog-api-key": api_key},
+                timeout=20,
+            )
+        except Exception:
+            pass
+
+
 import imageio_ffmpeg
 import streamlit as st
 
@@ -426,38 +584,56 @@ subtitle_size = st.slider("Subtitle text size", 16, 48, 28, 2)
 subtitle_position = st.selectbox("Subtitle position", ["Bottom", "Middle", "Top"])
 st.caption("Gemini speech recognition approximate timestamps ఇవ్వవచ్చు. API free quota / rate limits వర్తిస్తాయి; billing enabled అయితే charges రావచ్చు. Final exportకి ముందు subtitlesను చూసి సరిచూసుకో.")
 
-st.subheader("🎙️ మాట్లాడే వీడియోకు సంబంధిత B-Roll visuals")
-st.caption("నీ voice/audio అలాగే ఉంటుంది. నువ్వు upload చేసే photos/videosను ఎంచుకున్న secondsలో full-screen visualsగా చూపించవచ్చు. ఇవి speaker వెనుక automaticగా రావు; ఆ featureకి AI subject cutout అవసరం.")
-broll_mode = st.checkbox("🎬 Enable B-Roll cutaways", value=False)
+st.subheader("🎙️ Promptతో ఆటోమేటిక్ B-Roll visuals")
+st.caption("ఒక prompt రాయి. Gemini వీడియోలోని మాటల్ని అర్థం చేసుకుని, సరిపోయే visualsను generate చేసి, voice కొనసాగుతుండగా సరైన timingలో చూపిస్తుంది.")
+broll_mode = st.checkbox("✨ AI Prompt B-Roll enable చేయి", value=False)
 broll_assets = []
 broll_timeline = []
 if broll_mode:
-    broll_assets = st.file_uploader(
-        "మాట్లాడే వీడియోకు సంబంధించిన visuals (గరిష్ఠంగా 5)",
-        type=["mp4", "mov", "mkv", "webm", "avi", "jpg", "jpeg", "png", "webp"],
-        accept_multiple_files=True,
-        key="talking_broll_assets",
-        help="ఉదా: వర్షం గురించి మాట్లాడితే వర్షం video/photo upload చేయి. ఇవి upload క్రమంలో timelineలో అమర్చుకోవచ్చు."
-    ) or []
-    if broll_assets:
-        if len(broll_assets) > 5:
-            st.warning("ఒక exportలో గరిష్ఠంగా 5 B-Roll files మాత్రమే.")
-        else:
-            st.caption("ప్రతి visual ఎప్పుడు కనిపించాలో secondsలో పెట్టు. ఈ timings trim చేసిన clip ప్రారంభం నుంచి లెక్క.")
-            for bidx, asset in enumerate(broll_assets):
-                c1, c2 = st.columns(2)
-                with c1:
-                    bstart = st.number_input(
-                        f"{asset.name} — Start (sec)", min_value=0.0, max_value=3600.0,
-                        value=float(bidx * 5), step=0.5, key=f"broll_start_{bidx}"
-                    )
-                with c2:
-                    bend = st.number_input(
-                        f"{asset.name} — End (sec)", min_value=0.5, max_value=3600.0,
-                        value=float(bidx * 5 + 3), step=0.5, key=f"broll_end_{bidx}"
-                    )
-                broll_timeline.append((bstart, bend, asset))
-            st.info("B-Roll segmentలో main video స్థానంలో visual కనిపిస్తుంది; original video audio/voice కొనసాగుతుంది. Free versionలో visuals నువ్వే upload చేయాలి; internet నుంచి ఆటోమేటిక్‌గా visuals fetch చేయదు.")
+    broll_prompt = st.text_area(
+        "Visuals కోసం నీ prompt",
+        placeholder="ఉదా: నేను హైదరాబాద్ వర్షాల గురించి మాట్లాడుతున్నాను. నిజమైన వర్షపు రోడ్లు, ట్రాఫిక్, నీటి ప్రవాహం వంటి cinematic visuals చూపించు.",
+        key="ai_broll_prompt",
+        help="ఏ visuals కావాలో తెలుగులో లేదా Englishలో రాయవచ్చు."
+    )
+    st.caption("AI గరిష్ఠంగా 3 generated visual scenes తయారు చేస్తుంది. Original voice/audio అలాగే ఉంటుంది. Generated visuals full-screen cutawaysగా వస్తాయి; speaker వెనుక backgroundగా కాదు.")
+    if st.button("🎨 Promptతో visuals generate చేయి", disabled=(not editor_gemini_key or not broll_prompt.strip())):
+        try:
+            clip_start_for_broll = trim_start if trim_clip else 0.0
+            clip_duration_for_broll = trim_duration if trim_clip else 0.0
+            ratio = "9:16" if aspect.startswith("9:16") else ("16:9" if aspect.startswith("16:9") else "1:1")
+            with st.spinner("Gemini మాటలను analyze చేసి visuals generate చేస్తోంది. కొంత సమయం పట్టవచ్చు..."):
+                generated_scenes = create_prompt_broll_images(
+                    video.getvalue(),
+                    video.type or "video/mp4",
+                    video.name,
+                    editor_gemini_key,
+                    broll_prompt.strip(),
+                    ratio,
+                    clip_start_for_broll,
+                    clip_duration_for_broll,
+                )
+            st.session_state["prompt_broll_scenes"] = generated_scenes
+            st.session_state["prompt_broll_video_name"] = video.name
+            st.success(f"{len(generated_scenes)} AI visuals సిద్ధమయ్యాయి. ఇప్పుడు Edit video నొక్కు.")
+        except Exception as exc:
+            st.error(f"AI B-Roll తయారు కాలేదు: {exc}")
+    generated_scenes = (
+        st.session_state.get("prompt_broll_scenes", [])
+        if st.session_state.get("prompt_broll_video_name") == video.name else []
+    )
+    if generated_scenes:
+        for scene in generated_scenes:
+            asset = type("GeneratedBrollAsset", (), {
+                "name": scene["name"],
+                "getvalue": lambda self, data=scene["bytes"]: data,
+            })()
+            broll_assets.append(asset)
+            broll_timeline.append((scene["start"], scene["end"], asset))
+            st.image(scene["bytes"], caption=f"AI visual • {scene['start']:.1f}s–{scene['end']:.1f}s", use_container_width=True)
+    if not editor_gemini_key:
+        st.warning("Promptతో AI visuals కోసం app Secretsలో GEMINI_API_KEY అవసరం.")
+    st.info("Gemini image generationకు API quota/charges వర్తించవచ్చు. Free quota ఉందో లేదో Google AI Studioలో నీ keyకి చెక్ చేయి. Visuals AI-generated still images; generated video clips కావు.")
 
 
 st.caption(
@@ -471,7 +647,7 @@ edit_prompt = st.text_area(
     help="ఈ మొదటి versionలో promptలోని సాధారణ keywords ఆధారంగా కొన్ని FFmpeg effects ఆటోమేటిక్‌గా apply అవుతాయి."
 )
 
-if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode) or (broll_mode and (not broll_assets or len(broll_assets) > 5 or bg_mode or ai_bg_mode))):
+if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode) or (broll_mode and (not broll_assets or bg_mode or ai_bg_mode))):
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     with tempfile.TemporaryDirectory(prefix="macherla_editor_") as tmp:
         source = Path(tmp) / ("input" + Path(video.name).suffix.lower())
