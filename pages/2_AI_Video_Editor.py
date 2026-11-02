@@ -426,6 +426,40 @@ subtitle_size = st.slider("Subtitle text size", 16, 48, 28, 2)
 subtitle_position = st.selectbox("Subtitle position", ["Bottom", "Middle", "Top"])
 st.caption("Gemini speech recognition approximate timestamps ఇవ్వవచ్చు. API free quota / rate limits వర్తిస్తాయి; billing enabled అయితే charges రావచ్చు. Final exportకి ముందు subtitlesను చూసి సరిచూసుకో.")
 
+st.subheader("🎙️ మాట్లాడే వీడియోకు సంబంధిత B-Roll visuals")
+st.caption("నీ voice/audio అలాగే ఉంటుంది. నువ్వు upload చేసే photos/videosను ఎంచుకున్న secondsలో full-screen visualsగా చూపించవచ్చు. ఇవి speaker వెనుక automaticగా రావు; ఆ featureకి AI subject cutout అవసరం.")
+broll_mode = st.checkbox("🎬 Enable B-Roll cutaways", value=False)
+broll_assets = []
+broll_timeline = []
+if broll_mode:
+    broll_assets = st.file_uploader(
+        "మాట్లాడే వీడియోకు సంబంధించిన visuals (గరిష్ఠంగా 5)",
+        type=["mp4", "mov", "mkv", "webm", "avi", "jpg", "jpeg", "png", "webp"],
+        accept_multiple_files=True,
+        key="talking_broll_assets",
+        help="ఉదా: వర్షం గురించి మాట్లాడితే వర్షం video/photo upload చేయి. ఇవి upload క్రమంలో timelineలో అమర్చుకోవచ్చు."
+    ) or []
+    if broll_assets:
+        if len(broll_assets) > 5:
+            st.warning("ఒక exportలో గరిష్ఠంగా 5 B-Roll files మాత్రమే.")
+        else:
+            st.caption("ప్రతి visual ఎప్పుడు కనిపించాలో secondsలో పెట్టు. ఈ timings trim చేసిన clip ప్రారంభం నుంచి లెక్క.")
+            for bidx, asset in enumerate(broll_assets):
+                c1, c2 = st.columns(2)
+                with c1:
+                    bstart = st.number_input(
+                        f"{asset.name} — Start (sec)", min_value=0.0, max_value=3600.0,
+                        value=float(bidx * 5), step=0.5, key=f"broll_start_{bidx}"
+                    )
+                with c2:
+                    bend = st.number_input(
+                        f"{asset.name} — End (sec)", min_value=0.5, max_value=3600.0,
+                        value=float(bidx * 5 + 3), step=0.5, key=f"broll_end_{bidx}"
+                    )
+                broll_timeline.append((bstart, bend, asset))
+            st.info("B-Roll segmentలో main video స్థానంలో visual కనిపిస్తుంది; original video audio/voice కొనసాగుతుంది. Free versionలో visuals నువ్వే upload చేయాలి; internet నుంచి ఆటోమేటిక్‌గా visuals fetch చేయదు.")
+
+
 st.caption(
     "2K export అంటే 1440p output. చిన్న resolution వీడియోను 2Kగా export చేయవచ్చు, "
     "కానీ లేని original detail తిరిగి సృష్టించబడదు. Smooth slow motionలో motion artifacts రావచ్చు."
@@ -437,7 +471,7 @@ edit_prompt = st.text_area(
     help="ఈ మొదటి versionలో promptలోని సాధారణ keywords ఆధారంగా కొన్ని FFmpeg effects ఆటోమేటిక్‌గా apply అవుతాయి."
 )
 
-if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode)):
+if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode) or (broll_mode and (not broll_assets or len(broll_assets) > 5 or bg_mode or ai_bg_mode))):
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     with tempfile.TemporaryDirectory(prefix="macherla_editor_") as tmp:
         source = Path(tmp) / ("input" + Path(video.name).suffix.lower())
@@ -524,6 +558,134 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             cmd += ["-ss", str(trim_start), "-i", str(source), "-t", str(trim_duration)]
         else:
             cmd += ["-i", str(source)]
+        if broll_mode and broll_assets:
+            if smooth:
+                st.warning("B-Roll cutaway modeలో slow-motion option ప్రస్తుతం apply కాదు; మిగతా enhancement settings apply అవుతాయి.")
+            valid_timeline = sorted(broll_timeline, key=lambda item: item[0])
+            previous_end = 0.0
+            timeline_error = None
+            for cue_start, cue_end, cue_asset in valid_timeline:
+                if cue_end <= cue_start:
+                    timeline_error = f"{cue_asset.name}: End time Start time కంటే ఎక్కువగా ఉండాలి."
+                    break
+                if cue_start < previous_end:
+                    timeline_error = "B-Roll timings overlap అవుతున్నాయి. ప్రతి visualకు వేర్వేరు time range ఇవ్వు."
+                    break
+                if cue_start < 0:
+                    timeline_error = "Start time 0 లేదా అంతకంటే ఎక్కువగా ఉండాలి."
+                    break
+                previous_end = cue_end
+            if timeline_error:
+                st.error(timeline_error)
+                st.stop()
+
+            broll_paths = []
+            for bidx, (_, _, asset) in enumerate(valid_timeline, start=1):
+                bpath = Path(tmp) / f"broll_{bidx}{Path(asset.name).suffix.lower()}"
+                bpath.write_bytes(asset.getvalue())
+                broll_paths.append(bpath)
+
+            # Normalize every source segment to the selected output canvas.
+            common = [
+                item for item in filters
+                if not item.startswith(("scale=", "pad=", "subtitles=", "setsar=", "format="))
+                and item not in ["setpts=2*PTS", "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"]
+            ]
+            if framing == "Fill frame (crop edges)":
+                canvas_filter = (
+                    f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={w}:{h},setsar=1,fps=30,format=yuv420p"
+                )
+            else:
+                canvas_filter = (
+                    f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                    f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps=30,format=yuv420p"
+                )
+            common_chain = (",".join(common) + ",") if common else ""
+            graph_parts = []
+            segment_labels = []
+            input_index = 1
+            cursor = 0.0
+            segment_index = 0
+
+            for cue_index, (cue_start, cue_end, cue_asset) in enumerate(valid_timeline):
+                if cue_start > cursor:
+                    label = f"main{segment_index}"
+                    graph_parts.append(
+                        f"[0:v]trim=start={cursor}:end={cue_start},setpts=PTS-STARTPTS,"
+                        f"{common_chain}{canvas_filter}[{label}]"
+                    )
+                    segment_labels.append(f"[{label}]")
+                    segment_index += 1
+
+                bpath = broll_paths[cue_index]
+                is_still = bpath.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]
+                if is_still:
+                    cmd += ["-loop", "1", "-i", str(bpath)]
+                else:
+                    cmd += ["-stream_loop", "-1", "-i", str(bpath)]
+                duration = cue_end - cue_start
+                label = f"broll{segment_index}"
+                graph_parts.append(
+                    f"[{input_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
+                    f"{common_chain}{canvas_filter}[{label}]"
+                )
+                segment_labels.append(f"[{label}]")
+                input_index += 1
+                segment_index += 1
+                cursor = cue_end
+
+            # Keep the remainder of the speaker video after the last B-Roll cue.
+            label = f"main{segment_index}"
+            graph_parts.append(
+                f"[0:v]trim=start={cursor},setpts=PTS-STARTPTS,"
+                f"{common_chain}{canvas_filter}[{label}]"
+            )
+            segment_labels.append(f"[{label}]")
+            concat_inputs = "".join(segment_labels)
+            graph_parts.append(
+                f"{concat_inputs}concat=n={len(segment_labels)}:v=1:a=0[vbase]"
+            )
+            final_video_chain = "[vbase]"
+            if subtitle_graph_filter:
+                graph_parts.append(f"{final_video_chain}{subtitle_graph_filter}[vsub]")
+                final_video_chain = "[vsub]"
+            graph_parts.append(f"{final_video_chain}format=yuv420p[v]")
+            cmd += ["-filter_complex", ";".join(graph_parts), "-map", "[v]", "-map", "0:a?", "-shortest"]
+
+            if mute_audio:
+                cmd += ["-an"]
+            else:
+                if audio_filters:
+                    cmd += ["-filter:a", ",".join(audio_filters)]
+                cmd += ["-c:a", "aac", "-b:a", "192k"]
+            cmd += [
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", video_crf,
+                "-movflags", "+faststart", str(output),
+            ]
+            with st.spinner("B-Roll visualsను speaker voiceతో sync చేస్తున్నాను..."):
+                try:
+                    broll_result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+                    if broll_result.returncode != 0 or not output.exists() or output.stat().st_size == 0:
+                        st.error("B-Roll video render కాలేదు.")
+                        st.code((broll_result.stderr or broll_result.stdout or "FFmpeg error")[-3500:])
+                        st.stop()
+                    edited = output.read_bytes()
+                    st.success("B-Roll visuals videoలో కలిశాయి! Original voice కొనసాగుతుంది.")
+                    st.video(edited)
+                    st.download_button(
+                        "⬇️ Download B-Roll edited MP4",
+                        data=edited,
+                        file_name="macherla-guru-broll-edited.mp4",
+                        mime="video/mp4",
+                        type="primary",
+                    )
+                except subprocess.TimeoutExpired:
+                    st.error("B-Roll renderకు ఎక్కువ సమయం పట్టింది. చిన్న clipతో ప్రయత్నించు.")
+                except Exception as exc:
+                    st.error(f"B-Roll render error: {exc}")
+            st.stop()
+
         if bg_mode and background is not None:
             bg_path = Path(tmp) / ("background" + Path(background.name).suffix.lower())
             bg_path.write_bytes(background.getvalue())
