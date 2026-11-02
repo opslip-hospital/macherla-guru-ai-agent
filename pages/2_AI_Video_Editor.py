@@ -766,7 +766,7 @@ if one_prompt_clicked or manual_edit_clicked:
             prompt_summary.append("Prompt B-Roll: requested")
         if wants_captions:
             prompt_summary.append(f"Automatic captions: {caption_language}")
-        st.info("Prompt నుంచి ఎంచుకున్న settings:\\n" + "\\n".join(f"• {item}" for item in prompt_summary))
+        st.info("Prompt నుంచి ఎంచుకున్న settings:\n" + "\n".join(f"• {item}" for item in prompt_summary))
         wants_background = any(term in prompt_lower for term in ["change background", "replace background", "remove background", "background replacement", "బ్యాక్‌గ్రౌండ్ మార్చు", "బ్యాక్ గ్రౌండ్ మార్చు"])
         if wants_background and not (bg_mode or ai_bg_mode):
             st.error("Background మార్చాలంటే Green/Blue లేదా AI Background Removal mode ON చేసి, కొత్త background image/video upload చేయాలి. ఈ file అవసరాన్ని prompt ఒక్కటితో భర్తీ చేయలేం.")
