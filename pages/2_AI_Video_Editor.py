@@ -189,6 +189,11 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             # Apply the same enhancement and prompt presets after compositing.
             # The final scale/pad filters are omitted because the composite is already sized.
             ai_post_filters = filters[:-4]
+            # AI cutout frames are extracted at 12 fps to keep CPU/RAM use bounded.
+            # Upsample the final timeline to a standard delivery rate when the user
+            # chooses to keep the original frame rate; this avoids a 12-fps MP4.
+            if fps_choice == "Keep original":
+                ai_post_filters.append("fps=30")
             post_chain = ("," + ",".join(ai_post_filters)) if ai_post_filters else ""
             filter_graph = (
                 f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,crop={w}:{h}[bg];"
