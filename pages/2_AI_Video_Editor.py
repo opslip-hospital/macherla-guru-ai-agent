@@ -25,7 +25,7 @@ st.caption(
     "కొత్త account free credits: వారి FAQ ప్రకారం రెండు attempts, ఒక completed video వరకు; "
     "free video-to-video Seedance 2.0 Miniలో గరిష్ఠంగా 720p. ఇది unlimited free కాదు. "
     "Stylized / fictional characters‌కు ప్రయత్నించు; photorealistic real-person faces reject కావచ్చు. "
-    "Free-tier commercial-use rights မရှိాయని వారి terms చెబుతున్నాయి—monetized uploadకు ముందు licence తప్పనిసరిగా చెక్ చేయి. "
+    "Free tierలో commercial-use rights లేవని వారి terms చెబుతున్నాయి—monetized uploadకు ముందు licence తప్పనిసరిగా చెక్ చేయి. "
     "ఇది third-party service; upload చేసే వీడియో/ఫోటోలకు నీకు హక్కులు ఉండాలి."
 )
 with st.expander("ఈ toolలో ఏ prompt ఇవ్వాలి?"):
