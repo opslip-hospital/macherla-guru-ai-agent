@@ -791,7 +791,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             # Normalize every source segment to the selected output canvas.
             common = [
                 item for item in filters
-                if not item.startswith(("scale=", "pad=", "subtitles=", "setsar=", "format="))
+                if not item.startswith(("scale=", "crop=", "pad=", "subtitles=", "setsar=", "format="))
                 and item not in ["setpts=2*PTS", "minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir"]
             ]
             if framing == "Fill frame (crop edges)":
@@ -944,7 +944,10 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             bg_is_video = bg_path.suffix.lower() in [".mp4", ".mov", ".mkv", ".webm"]
             cmd += (["-stream_loop", "-1", "-i", str(bg_path)] if bg_is_video else ["-loop", "1", "-i", str(bg_path)])
             # Preserve alpha while applying chroma-key and compositing.
-            fg_chain = ",".join(filters[:-4])
+            fg_chain = ",".join(
+                item for item in filters
+                if not item.startswith(("scale=", "crop=", "pad=", "subtitles=", "setsar=", "format="))
+            )
             key_hex = "0x00FF00" if key_color == "Green" else "0x0000FF"
             fg_finish = (
                 f"chromakey={key_hex}:{key_similarity}:{key_blend},format=yuva420p,"
@@ -1020,7 +1023,10 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             sequence = str(frames_dir / "frame_%06d.png")
             # Apply the same enhancement and prompt presets after compositing.
             # The final scale/pad filters are omitted because the composite is already sized.
-            ai_post_filters = filters[:-4]
+            ai_post_filters = [
+                item for item in filters
+                if not item.startswith(("scale=", "crop=", "pad=", "subtitles=", "setsar=", "format="))
+            ]
             # AI cutout frames use the selected sampling rate to bound CPU/RAM use.
             # Upsample the final timeline to a standard delivery rate when the user
             # chooses to keep the original frame rate; this avoids a 12-fps MP4.
