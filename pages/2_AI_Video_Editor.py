@@ -62,6 +62,7 @@ with left:
     smooth = st.checkbox("Smooth slow motion (50% speed)", value=False)
     denoise = st.checkbox("Noise reduction", value=True)
     sharpen = st.checkbox("Sharpen details", value=True)
+    framing = st.selectbox("Frame layout", ["Fit full video (bars if needed)", "Fill frame (crop edges)"])
 with right:
     brightness = st.slider("Brightness", -0.20, 0.20, 0.0, 0.01)
     contrast = st.slider("Contrast", 0.70, 1.50, 1.05, 0.05)
@@ -69,6 +70,9 @@ with right:
     fps_choice = st.selectbox("Frame rate", ["Keep original", "30 FPS", "60 FPS"])
     bg_mode = st.checkbox("Green/blue screen background replace", value=False)
     ai_bg_mode = st.checkbox("🤖 Remove ANY background with AI (not just green/blue)", value=False)
+    mute_audio = st.checkbox("Mute original audio", value=False)
+    audio_volume = st.slider("Original audio volume", 0, 200, 100, 5, disabled=mute_audio)
+    export_size = st.selectbox("MP4 file size / quality", ["Best quality", "Balanced", "Smaller file"], index=0)
 
 background = None
 if bg_mode and ai_bg_mode:
@@ -148,10 +152,20 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             filters.append("fps=30")
         elif fps_choice == "60 FPS" and not smooth:
             filters.append("fps=60")
-        filters.append(f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos")
-        filters.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2")
+        if framing == "Fill frame (crop edges)":
+            filters.append(f"scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos")
+            filters.append(f"crop={w}:{h}")
+        else:
+            filters.append(f"scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos")
+            filters.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2")
         filters.append("setsar=1")
         filters.append("format=yuv420p")
+        video_crf = {"Best quality": "18", "Balanced": "21", "Smaller file": "25"}[export_size]
+        audio_filters = []
+        if smooth:
+            audio_filters.append("atempo=0.5")
+        if not mute_audio and audio_volume != 100:
+            audio_filters.append(f"volume={audio_volume / 100:.2f}")
 
         cmd = [ffmpeg, "-y"]
         if trim_clip:
@@ -262,14 +276,16 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
             if trim_clip:
                 ai_cmd += ["-ss", str(trim_start)]
             ai_cmd += ["-i", str(source), "-filter_complex", filter_graph,
-                "-map", "[v]", "-map", "2:a?", "-shortest",
-            ]
-            if smooth:
-                ai_cmd += ["-filter:a", "atempo=0.5"]
+                "-map", "[v]", "-map", "2:a?", "-shortest"]
+            if mute_audio:
+                ai_cmd += ["-an"]
+            else:
+                if audio_filters:
+                    ai_cmd += ["-filter:a", ",".join(audio_filters)]
+                ai_cmd += ["-c:a", "aac", "-b:a", "192k"]
             ai_cmd += [
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
-                "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-                str(output),
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", video_crf,
+                "-movflags", "+faststart", str(output),
             ]
             result = subprocess.run(ai_cmd, capture_output=True, text=True, timeout=1800)
             if result.returncode != 0 or not output.exists():
@@ -286,12 +302,15 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
         else:
             cmd += ["-vf", ",".join(filters), "-map", "0:v:0", "-map", "0:a?"]
 
-        if smooth:
-            cmd += ["-filter:a", "atempo=0.5"]
+        if mute_audio:
+            cmd += ["-an"]
+        else:
+            if audio_filters:
+                cmd += ["-filter:a", ",".join(audio_filters)]
+            cmd += ["-c:a", "aac", "-b:a", "192k"]
         cmd += [
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "19",
-            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-            str(output),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", video_crf,
+            "-movflags", "+faststart", str(output),
         ]
 
         with st.spinner("వీడియోను process చేస్తున్నాను. వీడియో పొడవు, server resources బట్టి సమయం పడుతుంది..."):
@@ -322,6 +341,7 @@ if st.button("✨ Edit video & create MP4", type="primary", disabled=((bg_mode o
 st.divider()
 st.caption(
     "Free engine: FFmpeg. ఈ buildలో denoise, color correction, sharpening, slow-motion interpolation, "
-    "1080p/2K export ఉన్నాయి. AI any-background subject cutout short clipsకే experimental modeలో ఉంది; "
+    "1080p/2K export, frame fit/crop, audio mute/volume, MP4 quality-size presets ఉన్నాయి. "
+    "AI any-background subject cutout short clipsకే experimental modeలో ఉంది; "
     "automatic Telugu captions, advanced object tracking ఇంకా లేవు."
 )
