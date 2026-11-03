@@ -911,7 +911,7 @@ st.caption(
 edit_prompt = st.text_area(
     "✨ One Prompt → Video (అన్ని editing సూచనలు ఒకేసారి)",
     placeholder="ఉదా: ఈ Spider-Man వీడియోను cinematicగా enhance చేయి, B-Roll visuals add చేయి, Telugu subtitles పెట్టి 2K 9:16 MP4గా export చేయి.",
-    help="Storytelling / dynamic visuals / బోర్ కాకుండా వంటి prompt ఇస్తే AI B-roll (up to 6 varied scenes), speech captions, subtle still-image motion and short visual fades ప్రయత్నిస్తుంది. Gemini API quota/charges may apply."
+    help="Storytelling / dynamic visuals / బోర్ కాకుండా వంటి prompt ఇస్తే AI B-roll (up to 6 varied scenes), speaker/visual layout changes, speech captions with phrase-level pop/fade animation, subtle still-image motion and short visual fades ప్రయత్నిస్తుంది. Captions are phrase-timed, not word-by-word karaoke. Gemini API quota/charges may apply."
 )
 
 one_prompt_clicked = st.button(
