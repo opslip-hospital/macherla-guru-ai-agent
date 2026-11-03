@@ -176,6 +176,58 @@ st.set_page_config(page_title="Macherla Guru AI Video Editor", page_icon="🎞�
 st.title("🎞️ Macherla Guru — AI Video Editor")
 st.caption("Free-first video editing • FFmpeg engine • YouTube Manager remains separate")
 
+def srt_to_animated_ass(srt_text, font_size, position):
+    """Convert phrase-level SRT cues to ASS captions with a gentle pop/fade entrance."""
+    def ass_time(value):
+        hours, minutes, seconds = value.replace(",", ".").split(":")
+        total = float(hours) * 3600 + float(minutes) * 60 + float(seconds)
+        whole = int(total)
+        centiseconds = int(round((total - whole) * 100))
+        if centiseconds >= 100:
+            whole += 1
+            centiseconds = 0
+        return f"{whole // 3600}:{(whole % 3600) // 60:02d}:{whole % 60:02d}.{centiseconds:02d}"
+
+    alignment, margin = {"Bottom": (2, 70), "Middle": (5, 0), "Top": (8, 70)}[position]
+    header = (
+        "[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n"
+        "ScaledBorderAndShadow: yes\nWrapStyle: 2\n\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
+        "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+        "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Default,Arial,{int(font_size)},&H00FFFFFF,&H0000FFFF,&H00000000,&H90000000,"
+        f"-1,0,0,0,100,100,0,0,3,2,1,{alignment},55,55,{margin},1\n\n"
+        "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    blocks = re.split(r"\n\s*\n", srt_text.strip())
+    events = []
+    for block in blocks:
+        lines = [line.strip("\ufeff") for line in block.splitlines() if line.strip()]
+        time_line = next((line for line in lines if "-->" in line), None)
+        if not time_line:
+            continue
+        match = re.search(
+            r"(\d{1,2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}[,.]\d{3})",
+            time_line,
+        )
+        if not match:
+            continue
+        start, end = ass_time(match.group(1)), ass_time(match.group(2))
+        time_index = lines.index(time_line)
+        caption = r"\N".join(lines[time_index + 1:]).strip()
+        caption = re.sub(r"<[^>]+>", "", caption)
+        caption = caption.replace("{", "").replace("}", "").replace("\r", "")
+        if not caption:
+            continue
+        # Phrase-level entrance animation; timing remains at the SRT cue level.
+        animated = r"{\fad(110,90)\fscx88\fscy88\t(0,130,\fscx100\fscy100)}" + caption
+        events.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{animated}")
+    if not events:
+        raise ValueError("SRT నుంచి animated captions తయారు కాలేదు; timestamp/text సరిచూడు.")
+    return (header + "\n".join(events) + "\n").encode("utf-8")
+
+
 def create_srt_with_gemini(video_bytes, mime_type, display_name, api_key, language):
     if len(video_bytes) > 100 * 1024 * 1024:
         raise ValueError("Automatic captions కోసం 100 MB కంటే చిన్న వీడియో ఎంచుకో.")
@@ -1079,20 +1131,13 @@ if one_prompt_clicked or manual_edit_clicked:
             filters.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2")
         subtitle_graph_filter = None
         if subtitle_bytes is not None:
-            subtitle_path = Path(tmp) / "captions.srt"
-            subtitle_path.write_bytes(subtitle_bytes)
-            alignment, margin = {
-                "Bottom": ("2", "35"),
-                "Middle": ("5", "0"),
-                "Top": ("8", "35"),
-            }[subtitle_position]
-            subtitle_style = (
-                f"FontName=Arial,FontSize={subtitle_size},PrimaryColour=&H00FFFFFF,"
-                f"OutlineColour=&H00000000,BorderStyle=3,BackColour=&H90000000,"
-                f"Outline=1,Shadow=2,Bold=1,Alignment={alignment},MarginV={margin}"
+            subtitle_path = Path(tmp) / "captions.ass"
+            srt_text_for_ass = subtitle_bytes.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+            subtitle_path.write_bytes(
+                srt_to_animated_ass(srt_text_for_ass, subtitle_size, subtitle_position)
             )
             subtitle_filter_path = str(subtitle_path).replace("\\", "/").replace(":", "\\:")
-            subtitle_graph_filter = f"subtitles=filename='{subtitle_filter_path}':force_style='{subtitle_style}'"
+            subtitle_graph_filter = f"subtitles=filename='{subtitle_filter_path}'"
             if not bg_mode and not ai_bg_mode:
                 filters.append(subtitle_graph_filter)
         if freeze_last_frame:
