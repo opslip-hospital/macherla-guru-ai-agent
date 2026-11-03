@@ -12,7 +12,7 @@ pinned: false
 
 This Space is a **preflight prototype**, not a video generator yet. The `app.py` file is the Gradio entry point.
 
-It validates a source clip, a character reference image and a Telugu story prompt. Its optional GPU check reports the allocated device and VRAM. It does not download model weights or connect the UI to the renderer yet. An isolated Wan2.2 command runner now exists for a prepared local checkout; it executes preprocessing/inference only when explicitly called, uses a timeout, and verifies the MP4 container. Telugu speech synthesis and lip-sync are not implemented.
+It validates a source clip, a character reference image and a Telugu story prompt. Its optional GPU check reports the allocated device and VRAM. It does not download model weights or connect the UI to the renderer yet. Isolated Wan2.2 runners now exist for character animation/replacement (Animate-14B) and prompt-driven new scene generation (TI2V-5B). They execute only when explicitly called, use bounded timeouts, and verify the MP4 container. Telugu speech synthesis and lip-sync are not implemented.
 
 ## Hardware
 For an initial Wan2.2 Animate-14B experiment, the project needs a compatible GPU allocation and enough free VRAM. A GPU being visible is not proof that the model will load. Do not enable paid hardware without explicit approval.
