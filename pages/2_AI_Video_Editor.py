@@ -872,6 +872,7 @@ manual_edit_clicked = st.button(
     disabled=((bg_mode or ai_bg_mode) and background is None) or (bg_mode and ai_bg_mode) or (broll_mode and (not broll_assets or bg_mode or ai_bg_mode))
 )
 
+auto_storytelling_layout = False
 if one_prompt_clicked or manual_edit_clicked:
     if one_prompt_clicked:
         prompt_lower = edit_prompt.lower()
@@ -933,6 +934,7 @@ if one_prompt_clicked or manual_edit_clicked:
             "మాటలకు తగ్గట్టు visuals", "మాటలకు తగ్గ విజువల్స్", "విజువల్స్ మార్చు",
             "కథలా", "కథనం", "ఆటో ఎడిటింగ్"
         ])
+        auto_storytelling_layout = storytelling_mode
         wants_broll = storytelling_mode or any(term in prompt_lower for term in [
             "b-roll", "broll", "బి-రోల్", "visuals", "విజువల్స్"
         ])
@@ -992,7 +994,7 @@ if one_prompt_clicked or manual_edit_clicked:
                     st.error("ఈ వీడియోకు సరిపోయే B-Roll scenes Gemini ఇవ్వలేదు. Prompt మార్చి మళ్లీ ప్రయత్నించు.")
                     st.stop()
                 broll_mode = True
-                broll_side_by_side = True
+                broll_side_by_side = False
                 st.success(f"{len(scenes)} B-Roll visuals సిద్ధమయ్యాయి. Final video render అవుతోంది.")
             except Exception as exc:
                 st.error(f"Prompt B-Roll తయారు కాలేదు: {exc}")
@@ -1188,8 +1190,8 @@ if one_prompt_clicked or manual_edit_clicked:
                 graph_parts.append(f"[0:v]split={main_count}{split_outputs}")
             main_source_index = 0
             speaker_side_index = 1 + len(valid_timeline)
-            if broll_side_by_side:
-                # A second source input keeps the speaker visible during each B-roll cue.
+            if broll_side_by_side or (auto_storytelling_layout and cue_index % 2 == 1):
+                # Storytelling mode alternates full-screen cutaways with speaker-plus-visual layouts.
                 if trim_clip:
                     cmd += ["-ss", str(trim_start), "-i", str(source)]
                 else:
