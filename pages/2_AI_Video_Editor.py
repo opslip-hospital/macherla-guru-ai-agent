@@ -1190,8 +1190,8 @@ if one_prompt_clicked or manual_edit_clicked:
                 graph_parts.append(f"[0:v]split={main_count}{split_outputs}")
             main_source_index = 0
             speaker_side_index = 1 + len(valid_timeline)
-            if broll_side_by_side or (auto_storytelling_layout and cue_index % 2 == 1):
-                # Storytelling mode alternates full-screen cutaways with speaker-plus-visual layouts.
+            if broll_side_by_side or auto_storytelling_layout:
+                # Storytelling mode needs a second speaker input for alternating layouts.
                 if trim_clip:
                     cmd += ["-ss", str(trim_start), "-i", str(source)]
                 else:
@@ -1214,7 +1214,7 @@ if one_prompt_clicked or manual_edit_clicked:
                 bpath = broll_paths[cue_index]
                 duration = cue_end - cue_start
                 label = f"broll{segment_index}"
-                if broll_side_by_side:
+                if broll_side_by_side or (auto_storytelling_layout and cue_index % 2 == 1):
                     panel_w = max(2, (w // 2) // 2 * 2)
                     visual_w = w - panel_w
                     speaker_label = f"speaker_panel{segment_index}"
