@@ -82,19 +82,46 @@ def create_prompt_broll_images(video_bytes, mime_type, display_name, api_key, us
             "Use up to 6 scenes maximum. Vary the visual language: mix realistic location cutaways, close-up detail shots, wide establishing shots, action visuals, and symbolic imagery where relevant. Avoid repeating the same composition. Keep all visuals directly tied to the spoken topic. Do not invent factual labels or put text in images. "
             "If speech is unclear, create visuals for the overall subject of the video."
         )
-        analysis = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
-            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [
-                    {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
-                    {"text": storyboard_prompt},
-                ]}],
-                "generationConfig": {"responseMimeType": "application/json"},
-            },
-            timeout=300,
-        )
-        analysis.raise_for_status()
+        analysis_payload = {
+            "contents": [{"parts": [
+                {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                {"text": storyboard_prompt},
+            ]}],
+            "generationConfig": {"responseMimeType": "application/json"},
+        }
+        # Temporary Gemini 503/429 overloads should not immediately fail the whole edit.
+        # Retry the preferred model, then fall back to the already-used Flash Lite model.
+        analysis = None
+        analysis_errors = []
+        for model_name in ["gemini-3.8-flash", "gemini-3.5-flash-lite"]:
+            for attempt in range(3):
+                try:
+                    candidate = requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent",
+                        headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                        json=analysis_payload,
+                        timeout=300,
+                    )
+                    if candidate.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+                        time.sleep(2 ** attempt)
+                        continue
+                    candidate.raise_for_status()
+                    analysis = candidate
+                    break
+                except requests.RequestException as exc:
+                    analysis_errors.append(f"{model_name}: {exc}")
+                    status = getattr(getattr(exc, "response", None), "status_code", None)
+                    if status not in (429, 500, 502, 503, 504) or attempt >= 2:
+                        break
+                    time.sleep(2 ** attempt)
+            if analysis is not None:
+                break
+        if analysis is None:
+            raise RuntimeError(
+                "Gemini B-Roll scene analysis తాత్కాలికంగా అందుబాటులో లేదు. "
+                "3 retries + fallback model ప్రయత్నించాం. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు. "
+                + " | ".join(analysis_errors[-2:])
+            )
         response_data = analysis.json()
         text_parts = [
             part["text"]
