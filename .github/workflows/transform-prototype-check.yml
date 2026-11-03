@@ -18,3 +18,5 @@ jobs:
           python-version: "3.11"
       - name: Check transformation page syntax
         run: python -m py_compile pages/3_AI_Video_Transformation.py
+      - name: Check ZIP and hashing standard library imports
+        run: python -c "import hashlib, io, json, re, uuid, zipfile"
