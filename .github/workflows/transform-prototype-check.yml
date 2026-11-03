@@ -1,0 +1,20 @@
+name: AI video transformation prototype syntax check
+
+on:
+  push:
+    branches: [ai-video-transform-prototype]
+    paths:
+      - "pages/3_AI_Video_Transformation.py"
+      - ".github/workflows/transform-prototype-check.yml"
+  workflow_dispatch:
+
+jobs:
+  syntax-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check transformation page syntax
+        run: python -m py_compile pages/3_AI_Video_Transformation.py
