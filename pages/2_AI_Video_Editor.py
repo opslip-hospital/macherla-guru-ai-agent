@@ -925,8 +925,18 @@ if one_prompt_clicked or manual_edit_clicked:
             export_size = "Best quality"
         elif "balanced" in prompt_lower:
             export_size = "Balanced"
-        wants_broll = any(term in prompt_lower for term in ["b-roll", "broll", "బి-రోల్", "visuals", "విజువల్స్"])
-        wants_captions = any(term in prompt_lower for term in ["subtitle", "subtitles", "captions", "సబ్‌టైటిల్స్", "క్యాప్షన్స్"])
+        storytelling_mode = any(term in prompt_lower for term in [
+            "storytelling", "story telling", "dynamic visuals", "engaging edit",
+            "make it engaging", "not boring", "ఆసక్తికరంగా", "బోర్ కాకుండా",
+            "కథలా", "కథనం", "ఆటో ఎడిటింగ్"
+        ])
+        wants_broll = storytelling_mode or any(term in prompt_lower for term in [
+            "b-roll", "broll", "బి-రోల్", "visuals", "విజువల్స్"
+        ])
+        # Storytelling mode automatically burns in speech captions as well as visual cutaways.
+        wants_captions = storytelling_mode or any(term in prompt_lower for term in [
+            "subtitle", "subtitles", "captions", "సబ్‌టైటిల్స్", "క్యాప్షన్స్", "text overlay"
+        ])
         prompt_summary = [
             f"Format: {aspect}",
             f"Resolution: {resolution}",
