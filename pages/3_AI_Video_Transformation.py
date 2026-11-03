@@ -1,5 +1,8 @@
+import hashlib
 import io
 import json
+import re
+import uuid
 import zipfile
 from datetime import datetime, timezone
 
@@ -76,8 +79,18 @@ if submitted:
         if len(video_bytes) > 100 * 1024 * 1024:
             st.error("వీడియో 100 MB కంటే పెద్దది. చిన్న క్లిప్‌తో ప్రయత్నించండి.")
         else:
+            def safe_filename(name, fallback):
+                # Uploaded filenames are untrusted; strip any directory components.
+                leaf = name.replace("\\\\", "/").split("/")[-1]
+                leaf = re.sub(r"[^A-Za-z0-9._-]+", "_", leaf).strip("._")
+                return (leaf[:100] or fallback)
+
+            video_name = safe_filename(source_video.name, "source_video.mp4")
+            image_name = safe_filename(character_image.name, "character_reference.png")
+            job_id = uuid.uuid4().hex[:12]
             job = {
                 "schema_version": 1,
+                "job_id": job_id,
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "character_name": character_name.strip() or "PJ Babu",
                 "task_mode": task_mode,
@@ -86,10 +99,14 @@ if submitted:
                 "story_prompt_te": story_prompt.strip(),
                 "visual_style": visual_style.strip(),
                 "keep_original_audio": keep_original_audio,
-                "source_video_filename": source_video.name,
+                "source_video_filename": video_name,
                 "source_video_mime": source_video.type,
-                "character_reference_filename": character_image.name,
+                "source_video_bytes": len(video_bytes),
+                "source_video_sha256": hashlib.sha256(video_bytes).hexdigest(),
+                "character_reference_filename": image_name,
                 "character_reference_mime": character_image.type,
+                "character_reference_bytes": len(image_bytes),
+                "character_reference_sha256": hashlib.sha256(image_bytes).hexdigest(),
                 "requested_output": "mp4",
                 "render_status": "waiting_for_gpu_worker",
                 "important_limit": (
@@ -100,9 +117,10 @@ if submitted:
             }
 
             bundle = io.BytesIO()
-            with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                archive.writestr("source_video/" + source_video.name, video_bytes)
-                archive.writestr("character_reference/" + character_image.name, image_bytes)
+            # Video is already compressed; ZIP_STORED avoids wasting server CPU.
+            with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_STORED) as archive:
+                archive.writestr("source_video/" + video_name, video_bytes)
+                archive.writestr("character_reference/" + image_name, image_bytes)
                 archive.writestr(
                     "job.json",
                     json.dumps(job, ensure_ascii=False, indent=2),
@@ -118,7 +136,7 @@ if submitted:
                     "కథ ప్రకారం పూర్తిగా కొత్త సీన్లు సృష్టించడానికి అదనపు వీడియో జనరేషన్ మోడల్ అవసరం.\n",
                 )
 
-            st.success("జాబ్ ప్యాకేజీ సిద్ధమైంది. ఇది ఇంకా రెండర్ చేసిన వీడియో కాదు.")
+            st.success(f"జాబ్ ప్యాకేజీ సిద్ధమైంది: {job_id}. ఇది ఇంకా రెండర్ చేసిన వీడియో కాదు.")
             st.download_button(
                 "⬇️ ట్రాన్స్‌ఫర్మేషన్ జాబ్ ZIP డౌన్‌లోడ్",
                 data=bundle.getvalue(),
