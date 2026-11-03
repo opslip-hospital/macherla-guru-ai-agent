@@ -1233,9 +1233,15 @@ if one_prompt_clicked or manual_edit_clicked:
                             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                             f"d=1:s={visual_w}x{h}:fps=30"
                         )
+                    fade_duration = min(0.18, max(0.05, duration / 3.0))
+                    visual_transition = (
+                        f",fade=t=in:st=0:d={fade_duration:g}:color=black,"
+                        f"fade=t=out:st={max(0.0, duration - fade_duration):g}:"
+                        f"d={fade_duration:g}:color=black"
+                    )
                     graph_parts.append(
                         f"[{1 + cue_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
-                        f"{common_chain}{visual_panel_filter}{visual_motion}[{visual_label}]"
+                        f"{common_chain}{visual_panel_filter}{visual_motion}{visual_transition}[{visual_label}]"
                     )
                     graph_parts.append(
                         f"[{speaker_label}][{visual_label}]hstack=inputs=2:shortest=1[{label}]"
@@ -1248,9 +1254,15 @@ if one_prompt_clicked or manual_edit_clicked:
                             f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                             f"d=1:s={w}x{h}:fps=30"
                         )
+                    fade_duration = min(0.18, max(0.05, duration / 3.0))
+                    visual_transition = (
+                        f",fade=t=in:st=0:d={fade_duration:g}:color=black,"
+                        f"fade=t=out:st={max(0.0, duration - fade_duration):g}:"
+                        f"d={fade_duration:g}:color=black"
+                    )
                     graph_parts.append(
                         f"[{1 + cue_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
-                        f"{common_chain}{canvas_filter}{visual_motion}[{label}]"
+                        f"{common_chain}{canvas_filter}{visual_motion}{visual_transition}[{label}]"
                     )
                 segment_labels.append(f"[{label}]")
                 segment_index += 1
