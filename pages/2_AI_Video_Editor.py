@@ -291,9 +291,11 @@ def create_srt_with_gemini(video_bytes, mime_type, display_name, api_key, langua
             "Transcribe the audible dialogue in this video into accurate subtitles. "
             + language_rule
             + " Return ONLY valid JSON in this exact shape: {\"segments\":[{\"start\":0.0,\"end\":2.5,\"text\":\"spoken words\"}]}. "
-            "Times must be seconds from the start of the video, each segment must match the actual spoken words and timing, "
-            "keep each subtitle short (ideally no more than 2 lines), do not invent dialogue, music lyrics, or sounds. "
-            "If there is no intelligible speech return {\"segments\":[]}."
+            "Times must be seconds from the start of the video and closely match when the words are actually spoken. "
+            "Break speech into short natural phrase chunks of about 2 to 5 words each, not full long sentences and not one-word-at-a-time captions. "
+            "Keep each caption to one short line when possible; create a new segment whenever the speaker pauses or the phrase changes. "
+            "Do not let captions overlap, do not leave large gaps during continuous speech, and do not invent dialogue, music lyrics, or sounds. "
+            "Preserve the exact spoken meaning and punctuation. If there is no intelligible speech return {\"segments\":[]}."
         )
         response = requests.post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
