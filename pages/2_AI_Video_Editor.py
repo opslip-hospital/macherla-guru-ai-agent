@@ -742,6 +742,45 @@ broll_mode = st.checkbox("✨ AI Prompt B-Roll enable చేయి", value=False
 broll_assets = []
 broll_timeline = []
 if broll_mode:
+    st.markdown("**📤 నీ దగ్గరున్న B-Roll visuals upload చేయి**")
+    uploaded_broll_files = st.file_uploader(
+        "Images లేదా short B-Roll videos ఎంచుకో",
+        type=["jpg", "jpeg", "png", "webp", "mp4", "mov", "mkv", "webm"],
+        accept_multiple_files=True,
+        key="manual_broll_uploads",
+        help="నీ phone/gallery నుంచి ఒకటి లేదా ఎక్కువ images/videos upload చేయవచ్చు. ప్రతి visualకి start/end timing సెట్ చేయి."
+    )
+    st.caption("Gemini generate చేయకపోయినా, నువ్వు upload చేసిన visualsతోనే B-Roll edit చేయవచ్చు. Images స్థిరంగా కనిపిస్తాయి; videosలో motion ఉంటుంది.")
+    if uploaded_broll_files:
+        st.caption(f"{len(uploaded_broll_files)} manual B-Roll file(s) upload అయ్యాయి.")
+        manual_scene_limit = trim_duration if trim_clip else 3600.0
+        for manual_index, manual_asset in enumerate(uploaded_broll_files):
+            st.markdown(f"**Uploaded visual {manual_index + 1}: {manual_asset.name}**")
+            suffix = Path(manual_asset.name).suffix.lower()
+            if suffix in [".jpg", ".jpeg", ".png", ".webp"]:
+                st.image(manual_asset.getvalue(), use_container_width=True)
+            else:
+                st.video(manual_asset.getvalue())
+            manual_col1, manual_col2 = st.columns(2)
+            with manual_col1:
+                manual_start = st.number_input(
+                    f"Uploaded visual {manual_index + 1} start (sec)",
+                    min_value=0.0, max_value=float(manual_scene_limit),
+                    value=0.0, step=0.5,
+                    key=f"manual_broll_start_{manual_index}_{video.name}_{manual_asset.name}"
+                )
+            with manual_col2:
+                manual_end = st.number_input(
+                    f"Uploaded visual {manual_index + 1} end (sec)",
+                    min_value=0.5, max_value=float(manual_scene_limit),
+                    value=min(3.0, float(manual_scene_limit)), step=0.5,
+                    key=f"manual_broll_end_{manual_index}_{video.name}_{manual_asset.name}"
+                )
+            if manual_end > manual_start:
+                broll_assets.append(manual_asset)
+                broll_timeline.append((manual_start, manual_end, manual_asset))
+            else:
+                st.warning("ఈ visual end time, start time కంటే ఎక్కువగా పెట్టు.")
     broll_prompt = st.text_area(
         "Visuals కోసం నీ prompt",
         placeholder="ఉదా: నేను హైదరాబాద్ వర్షాల గురించి మాట్లాడుతున్నాను. నిజమైన వర్షపు రోడ్లు, ట్రాఫిక్, నీటి ప్రవాహం వంటి cinematic visuals చూపించు.",
