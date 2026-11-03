@@ -859,7 +859,7 @@ st.caption(
 edit_prompt = st.text_area(
     "✨ One Prompt → Video (అన్ని editing సూచనలు ఒకేసారి)",
     placeholder="ఉదా: ఈ Spider-Man వీడియోను cinematicగా enhance చేయి, B-Roll visuals add చేయి, Telugu subtitles పెట్టి 2K 9:16 MP4గా export చేయి.",
-    help="Promptలో quality, cinematic, smoothing, denoise, sharpen, B-Roll, Telugu/English subtitles, 2K, 9:16 వంటి సూచనలు ఇవ్వవచ్చు."
+    help="Storytelling / dynamic visuals / బోర్ కాకుండా వంటి prompt ఇస్తే AI B-roll (up to 6 varied scenes), speech captions, subtle still-image motion and short visual fades ప్రయత్నిస్తుంది. Gemini API quota/charges may apply."
 )
 
 one_prompt_clicked = st.button(
@@ -927,7 +927,10 @@ if one_prompt_clicked or manual_edit_clicked:
             export_size = "Balanced"
         storytelling_mode = any(term in prompt_lower for term in [
             "storytelling", "story telling", "dynamic visuals", "engaging edit",
-            "make it engaging", "not boring", "ఆసక్తికరంగా", "బోర్ కాకుండా",
+            "make it engaging", "not boring", "engaging video", "dynamic edit",
+            "visual storytelling", "change visuals", "keep viewers engaged",
+            "ఆసక్తికరంగా", "బోర్ కాకుండా", "బోర్ కొట్టకుండా", "చూడటానికి బాగుండేలా",
+            "మాటలకు తగ్గట్టు visuals", "మాటలకు తగ్గ విజువల్స్", "విజువల్స్ మార్చు",
             "కథలా", "కథనం", "ఆటో ఎడిటింగ్"
         ])
         wants_broll = storytelling_mode or any(term in prompt_lower for term in [
