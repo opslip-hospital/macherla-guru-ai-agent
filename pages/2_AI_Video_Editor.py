@@ -71,15 +71,15 @@ def create_prompt_broll_images(video_bytes, mime_type, display_name, api_key, us
             "Analyze the whole video and return timestamps relative to the beginning of the video."
         )
         storyboard_prompt = (
-            "Listen to the spoken words in this video and create 3 short visual B-roll cutaways "
+            "Listen to the spoken words in this video and create up to 6 varied visual B-roll cutaways "
             "that directly illustrate the topics being discussed. " + selected_range +
             " The B-roll replaces the speaker picture temporarily, but the original voice will continue. "
             "Choose non-overlapping moments where a relevant visual would help the viewer. "
-            "Each scene should last about 2 to 4 seconds and be within the video duration. "
+            "Each scene should last about 1.5 to 3.5 seconds and be within the video duration. "
             "Respect this user's visual direction: " + user_prompt + ". "
             "Return ONLY valid JSON: {\"scenes\":[{\"start\":2.0,\"end\":5.0,"
             "\"image_prompt\":\"Detailed visual description, no text or watermark\"}]}. "
-            "Use 3 scenes maximum, no invented factual labels or text in images. "
+            "Use up to 6 scenes maximum. Vary the visual language: mix realistic location cutaways, close-up detail shots, wide establishing shots, action visuals, and symbolic imagery where relevant. Avoid repeating the same composition. Keep all visuals directly tied to the spoken topic. Do not invent factual labels or put text in images. "
             "If speech is unclear, create visuals for the overall subject of the video."
         )
         analysis = requests.post(
@@ -106,7 +106,7 @@ def create_prompt_broll_images(video_bytes, mime_type, display_name, api_key, us
         storyboard = json.loads(raw)
         scenes = storyboard.get("scenes", []) if isinstance(storyboard, dict) else []
         generated = []
-        for scene in scenes[:3]:
+        for scene in scenes[:6]:
             try:
                 scene_start = max(0.0, float(scene.get("start", 0)))
                 scene_end = float(scene.get("end", 0))
@@ -793,7 +793,7 @@ if broll_mode:
         help="Side-by-sideలో speaker ఒక వైపు, సంబంధిత visual మరో వైపు కనిపిస్తాయి. Original voice కొనసాగుతుంది."
     )
     broll_side_by_side = broll_display_mode.startswith("Speaker +")
-    st.caption("AI గరిష్ఠంగా 3 visual scenes తయారు చేస్తుంది. Full-screen modeలో visual మాత్రమే కనిపిస్తుంది; side-by-side modeలో speaker కూడా కనిపిస్తాడు. Original voice/audio అలాగే ఉంటుంది.")
+    st.caption("AI గరిష్ఠంగా 6 varied visual scenes తయారు చేస్తుంది. Full-screen modeలో visual మాత్రమే కనిపిస్తుంది; side-by-side modeలో speaker కూడా కనిపిస్తాడు. Original voice/audio అలాగే ఉంటుంది.")
     if st.button("🎨 Promptతో visuals generate చేయి", disabled=(not editor_gemini_key or not broll_prompt.strip())):
         try:
             clip_start_for_broll = trim_start if trim_clip else 0.0
@@ -942,7 +942,7 @@ if one_prompt_clicked or manual_edit_clicked:
         if flip_horizontal:
             prompt_summary.append("Mirror: ON")
         if wants_broll:
-            prompt_summary.append("Prompt B-Roll: requested")
+            prompt_summary.append("AI Storytelling visuals: requested (up to 6 varied scenes)")
         if wants_captions:
             prompt_summary.append(f"Automatic captions: {caption_language}")
         st.info("Prompt నుంచి ఎంచుకున్న settings:\n" + "\n".join(f"• {item}" for item in prompt_summary))
