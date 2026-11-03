@@ -1,26 +1,19 @@
-"""Gradio preflight UI for a future Hugging Face ZeroGPU worker.
+"""Gradio UI for the isolated Macherla Guru GPU worker.
 
-This is intentionally NOT a video renderer yet. It validates inputs and can
-report allocated GPU hardware; it never claims to generate an MP4.
+The UI supports readiness checks and an opt-in Wan2.2 TI2V-5B render when
+model files are explicitly mounted/configured. It never downloads weights.
 """
 from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 import gradio as gr
+import spaces
 
-try:
-    import spaces
-except ImportError:  # local CPU development
-    class _SpacesFallback:
-        @staticmethod
-        def GPU(*args, **kwargs):
-            def decorate(fn):
-                return fn
-            return decorate
-    spaces = _SpacesFallback()
+from ti2v_adapter import TI2VSetupError, run_ti2v_job
 
 
 def _file_info(path: str | None, label: str) -> dict:
@@ -57,8 +50,41 @@ def prepare_job(video_path, reference_path, story_te, mode, aspect_ratio):
     }
     return json.dumps(manifest, ensure_ascii=False, indent=2), (
         "ఇన్‌పుట్ తనిఖీ విజయవంతం. ఇది ఇంకా వీడియో రెండర్ చేయలేదు. "
-        "Wan2.2 మోడల్ వెయిట్స్, preprocess మరియు inference కనెక్షన్ తదుపరి దశ."
+        "క్యారెక్టర్ animation/replacement pipeline ఇంకా UIకి కనెక్ట్ కాలేదు."
     )
+
+
+@spaces.GPU(duration=240)
+def generate_new_scene(prompt_te, aspect_ratio, reference_path):
+    """Render a short new shot only when an operator has mounted the weights."""
+    wan_repo = os.environ.get("WAN_REPO_PATH", "").strip()
+    checkpoint = os.environ.get("WAN_TI2V_CHECKPOINT", "").strip()
+    if not wan_repo or not checkpoint:
+        raise gr.Error(
+            "GPU generator ఇంకా configure కాలేదు. Hugging Face Spaceలో "
+            "WAN_REPO_PATH మరియు WAN_TI2V_CHECKPOINT సిద్ధం చేసిన తర్వాత మాత్రమే "
+            "ఈ బటన్ పనిచేస్తుంది. మోడల్ weights ఆటోమేటిక్‌గా download కావు."
+        )
+    if not (prompt_te or "").strip():
+        raise gr.Error("కొత్త సన్నివేశం కోసం కథను తెలుగులో రాయండి.")
+    if reference_path:
+        _file_info(reference_path, "క్యారెక్టర్ రిఫరెన్స్")
+    output_dir = Path(tempfile.mkdtemp(prefix="macherla_ti2v_"))
+    output_file = output_dir / "generated_scene.mp4"
+    try:
+        rendered = run_ti2v_job(
+            wan_repo=wan_repo,
+            checkpoint_dir=checkpoint,
+            prompt=prompt_te,
+            output_file=str(output_file),
+            aspect_ratio=aspect_ratio,
+            frame_num=41,
+            reference_image=reference_path or None,
+            timeout_seconds=230,
+        )
+    except TI2VSetupError as exc:
+        raise gr.Error(str(exc)) from exc
+    return str(rendered)
 
 
 @spaces.GPU(duration=30)
@@ -73,48 +99,61 @@ def inspect_gpu():
     total_gib = props.total_memory / (1024 ** 3)
     free_gib = torch.cuda.mem_get_info(0)[0] / (1024 ** 3)
     return (
-        f"GPU: {props.name}\n"
-        f"VRAM మొత్తం: {total_gib:.1f} GiB\n"
-        f"ప్రస్తుతం ఖాళీ VRAM: {free_gib:.1f} GiB\n"
+        f"GPU: {props.name}\\n"
+        f"VRAM మొత్తం: {total_gib:.1f} GiB\\n"
+        f"ప్రస్తుతం ఖాళీ VRAM: {free_gib:.1f} GiB\\n"
         "గమనిక: GPU కనిపించడం మాత్రమే Wan2.2 మోడల్ లోడ్ అవుతుందని నిర్ధారణ కాదు."
     )
 
 
 with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
     gr.Markdown(
-        "# 🎬 Macherla Guru — GPU Worker (Preflight)\n"
-        "తెలుగు కథ + వీడియో + క్యారెక్టర్ రిఫరెన్స్. "
-        "**ఇది ప్రస్తుతం input/GPU readiness పరీక్ష మాత్రమే; MP4 జనరేషన్ ఇంకా కనెక్ట్ కాలేదు.**"
+        "# 🎬 Macherla Guru — AI Video Worker\\n"
+        "తెలుగు కథ ఆధారంగా కొత్త సన్నివేశం తయారు చేయడానికి ప్రయోగాత్మక వర్కర్. "
+        "మోడల్ ఫైల్స్ సిద్ధంగా ఉన్నప్పుడు మాత్రమే నిజమైన MP4 render ప్రారంభమవుతుంది."
     )
-    with gr.Row():
-        video = gr.Video(label="మూల వీడియో", sources=["upload"])
-        reference = gr.Image(label="క్యారెక్టర్ రిఫరెన్స్", type="filepath")
-    story = gr.Textbox(label="కథ / సూచన (తెలుగులో)", lines=5)
-    mode = gr.Radio(
-        choices=[
-            "animate_reference",
-            "replace_character",
-            "story_driven_new_scenes",
-        ],
-        value="animate_reference",
-        label="పని రకం",
-    )
-    ratio = gr.Radio(choices=["9:16", "16:9", "1:1"], value="9:16", label="Aspect ratio")
-    prepare = gr.Button("ఇన్‌పుట్‌లను తనిఖీ చేయి", variant="primary")
-    manifest = gr.Code(label="Job manifest", language="json")
-    status = gr.Textbox(label="స్థితి")
-    prepare.click(prepare_job, [video, reference, story, mode, ratio], [manifest, status])
-
-    gr.Markdown("## GPU availability check")
-    gpu_button = gr.Button("GPU ఉందో తనిఖీ చేయి")
-    gpu_result = gr.Textbox(label="GPU సమాచారం", lines=4)
-    gpu_button.click(inspect_gpu, outputs=gpu_result)
+    with gr.Tab("కొత్త సన్నివేశం"):
+        prompt = gr.Textbox(
+            label="సన్నివేశం / డైలాగ్ సూచన (తెలుగులో)",
+            lines=5,
+            placeholder="ఉదా: యముడు దున్నపోతుపై భయపడుతూ వస్తాడు...",
+        )
+        ratio = gr.Radio(choices=["9:16", "16:9"], value="9:16", label="Aspect ratio")
+        ref_image = gr.Image(label="ఐచ్చిక క్యారెక్టర్ రిఫరెన్స్ ఫోటో", type="filepath")
+        render_button = gr.Button("కొత్త సన్నివేశం తయారు చేయి", variant="primary")
+        rendered_video = gr.Video(label="తయారైన సన్నివేశం (MP4)")
+        render_button.click(
+            generate_new_scene,
+            inputs=[prompt, ratio, ref_image],
+            outputs=rendered_video,
+        )
+    with gr.Tab("మూల వీడియో తనిఖీ"):
+        with gr.Row():
+            video = gr.Video(label="మూల వీడియో", sources=["upload"])
+            reference = gr.Image(label="క్యారెక్టర్ రిఫరెన్స్", type="filepath")
+        story = gr.Textbox(label="కథ / సూచన (తెలుగులో)", lines=5)
+        mode = gr.Radio(
+            choices=["animate_reference", "replace_character", "story_driven_new_scenes"],
+            value="animate_reference",
+            label="పని రకం",
+        )
+        source_ratio = gr.Radio(choices=["9:16", "16:9", "1:1"], value="9:16", label="Aspect ratio")
+        prepare = gr.Button("ఇన్‌పుట్‌లను తనిఖీ చేయి", variant="primary")
+        manifest = gr.Code(label="Job manifest", language="json")
+        status = gr.Textbox(label="స్థితి")
+        prepare.click(prepare_job, [video, reference, story, mode, source_ratio], [manifest, status])
+    with gr.Tab("GPU స్థితి"):
+        gpu_button = gr.Button("GPU ఉందో తనిఖీ చేయి")
+        gpu_result = gr.Textbox(label="GPU సమాచారం", lines=4)
+        gpu_button.click(inspect_gpu, outputs=gpu_result)
 
     gr.Markdown(
-        "### ఇంకా కనెక్ట్ చేయాల్సినవి\n"
-        "- Wan2.2-Animate-14B model weights + official preprocessing/inference scripts\n"
-        "- Story-driven text/image-to-video stage\n"
-        "- Telugu TTS / recorded dialogue + lip-sync + final MP4 muxing"
+        "### పరిమితులు\\n"
+        "- కొత్త సన్నివేశాల కోసం Wan2.2 TI2V-5B runner కనెక్ట్ చేయబడింది; "
+        "కానీ model weights / GPU ఇంకా configure చేయలేదు.\\n"
+        "- పాత వీడియోలోని క్యారెక్టర్ animation/replacement ఇంకా UIకి కనెక్ట్ కాలేదు.\\n"
+        "- తెలుగు voice generation, lip-sync, multi-scene stitching ఇంకా చేయాల్సి ఉంది.\\n"
+        "- మోడల్ weights ఆటోమేటిక్‌గా download కావు; paid hardware అనుమతి లేకుండా enable చేయరాదు."
     )
 
 
