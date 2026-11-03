@@ -10,7 +10,7 @@ pinned: false
 ---
 # Macherla Guru AI Video Worker
 
-This Space is a **preflight prototype**, not a video generator yet.
+This Space is a **preflight prototype**, not a video generator yet. The `app.py` file is the Gradio entry point.
 
 It validates a source clip, a character reference image and a Telugu story prompt. Its optional GPU check reports the allocated device and VRAM. It does not download model weights, run Wan2.2, synthesize Telugu speech, perform lip-sync, or produce an MP4.
 
