@@ -1,22 +1,26 @@
-name: AI video transformation prototype syntax check
+name: AI video transformation prototype checks
 
 on:
   push:
     branches: [ai-video-transform-prototype]
     paths:
       - "pages/3_AI_Video_Transformation.py"
+      - "gpu_worker/**"
+      - "tests/**"
       - ".github/workflows/transform-prototype-check.yml"
   workflow_dispatch:
 
 jobs:
-  syntax-check:
+  syntax-and-unit-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Check transformation page syntax
-        run: python -m py_compile pages/3_AI_Video_Transformation.py
+      - name: Check Python syntax
+        run: python -m py_compile pages/3_AI_Video_Transformation.py gpu_worker/story_plan.py tests/test_story_plan.py
+      - name: Run story planner tests
+        run: python -m unittest discover -s tests -v
       - name: Check ZIP and hashing standard library imports
         run: python -c "import hashlib, io, json, re, uuid, zipfile"
