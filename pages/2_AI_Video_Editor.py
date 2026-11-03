@@ -1083,8 +1083,8 @@ if one_prompt_clicked or manual_edit_clicked:
             }[subtitle_position]
             subtitle_style = (
                 f"FontName=Arial,FontSize={subtitle_size},PrimaryColour=&H00FFFFFF,"
-                f"OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,"
-                f"Alignment={alignment},MarginV={margin}"
+                f"OutlineColour=&H00000000,BorderStyle=3,BackColour=&H90000000,"
+                f"Outline=1,Shadow=2,Bold=1,Alignment={alignment},MarginV={margin}"
             )
             subtitle_filter_path = str(subtitle_path).replace("\\", "/").replace(":", "\\:")
             subtitle_graph_filter = f"subtitles=filename='{subtitle_filter_path}':force_style='{subtitle_style}'"
@@ -1226,17 +1226,31 @@ if one_prompt_clicked or manual_edit_clicked:
                         f"[speaker_side{cue_index}]trim=start={cue_start}:end={cue_end},setpts=PTS-STARTPTS,"
                         f"{common_chain}{speaker_panel_filter}[{speaker_label}]"
                     )
+                    visual_motion = ""
+                    if bpath.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
+                        visual_motion = (
+                            f",zoompan=z='min(zoom+0.0012,1.07)':"
+                            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                            f"d=1:s={visual_w}x{h}:fps=30"
+                        )
                     graph_parts.append(
                         f"[{1 + cue_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
-                        f"{common_chain}{visual_panel_filter}[{visual_label}]"
+                        f"{common_chain}{visual_panel_filter}{visual_motion}[{visual_label}]"
                     )
                     graph_parts.append(
                         f"[{speaker_label}][{visual_label}]hstack=inputs=2:shortest=1[{label}]"
                     )
                 else:
+                    visual_motion = ""
+                    if bpath.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
+                        visual_motion = (
+                            f",zoompan=z='min(zoom+0.0012,1.07)':"
+                            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                            f"d=1:s={w}x{h}:fps=30"
+                        )
                     graph_parts.append(
                         f"[{1 + cue_index}:v]trim=duration={duration},setpts=PTS-STARTPTS,"
-                        f"{common_chain}{canvas_filter}[{label}]"
+                        f"{common_chain}{canvas_filter}{visual_motion}[{label}]"
                     )
                 segment_labels.append(f"[{label}]")
                 segment_index += 1
