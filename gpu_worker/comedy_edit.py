@@ -61,7 +61,7 @@ def render_comedy_edit(
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
         probe = subprocess.run([_ffmpeg_path(), "-hide_banner", "-i", str(source)], capture_output=True, text=True, timeout=30)
-        has_original_audio = bool(re.search(r"Stream #\\d+:\\d+.*Audio:", probe.stderr or ""))
+        has_original_audio = bool(re.search(r"Stream #\d+:\d+.*Audio:", probe.stderr or ""))
         cmd += ["-stream_loop", "-1", "-i", str(music_file)]
         if has_original_audio:
             graph = (
