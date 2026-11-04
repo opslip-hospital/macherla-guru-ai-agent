@@ -16,6 +16,7 @@ def transcribe_to_srt(
     model_size: str = "tiny",
     device: str = "cpu",
     compute_type: str = "int8",
+    punch_points_path: str | None = None,
 ) -> str:
     source = Path(audio_video_path)
     if not source.is_file() or source.stat().st_size == 0:
@@ -41,10 +42,13 @@ def transcribe_to_srt(
             secs, ms = divmod(ms, 1000)
             return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
         entries = []
+        speech_points = []
         for segment in segments:
             text = (segment.text or "").strip()
             if not text:
                 continue
+            # Phrase starts provide speech-aware visual emphasis points without changing dialogue.
+            speech_points.append(round(max(0.0, float(segment.start)), 3))
             entries.append(
                 f"{len(entries) + 1}\n{stamp(segment.start)} --> {stamp(segment.end)}\n{text}"
             )
@@ -53,6 +57,9 @@ def transcribe_to_srt(
         target = Path(output_srt)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("\n\n".join(entries) + "\n", encoding="utf-8")
+        if punch_points_path:
+            import json
+            Path(punch_points_path).write_text(json.dumps(speech_points), encoding="utf-8")
         return str(target)
     except SubtitleError:
         raise
