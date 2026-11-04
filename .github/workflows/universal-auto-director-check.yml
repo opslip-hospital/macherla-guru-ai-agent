@@ -52,7 +52,7 @@ jobs:
                    "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(voiced)])
               run([ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=3",
                    "-c:a", "aac", str(music)])
-              srt.write_text("1\\n00:00:00,200 --> 00:00:02,500\\nTest caption\\n", encoding="utf-8")
+              srt.write_text("1\n00:00:00,200 --> 00:00:02,500\nTest caption\n", encoding="utf-8")
 
               cases = [
                   ("silent-no-music", silent, {}),
