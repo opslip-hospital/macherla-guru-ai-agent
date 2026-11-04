@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+import sys
 from unittest.mock import patch
 
 from gpu_worker.auto_subtitles import SubtitleError, transcribe_to_srt
@@ -16,7 +17,8 @@ class AutoSubtitleTests(unittest.TestCase):
             fake_model = SimpleNamespace(transcribe=lambda *a, **k: (
                 iter([SimpleNamespace(start=0.2, end=1.4, text=" నమస్కారం మావా ")]), None
             ))
-            with patch("faster_whisper.WhisperModel", return_value=fake_model, create=True):
+            fake_module = SimpleNamespace(WhisperModel=lambda *a, **k: fake_model)
+            with patch.dict(sys.modules, {"faster_whisper": fake_module}):
                 result = transcribe_to_srt(str(source), str(output), language="te")
             content = Path(result).read_text(encoding="utf-8")
             self.assertIn("00:00:00,200 --> 00:00:01,400", content)
