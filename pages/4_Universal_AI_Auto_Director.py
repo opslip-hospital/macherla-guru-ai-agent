@@ -1,4 +1,5 @@
 import json
+import logging
 import tempfile
 from pathlib import Path
 
@@ -92,6 +93,12 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
             )
         except (ComedyEditError, SubtitleError, OSError, ValueError) as exc:
             st.error(str(exc))
+        except Exception as exc:
+            # Keep the full traceback in Streamlit Cloud logs while showing a
+            # useful, non-secret diagnostic in the app instead of a redacted crash.
+            logging.exception("Unexpected Universal AI Auto Director failure")
+            st.error(f"Unexpected {type(exc).__name__}: {exc}")
+            st.info("ఈ error వివరంతో render సమస్యను గుర్తించి సరిచేయవచ్చు. వీడియో ఫైల్ మీ పరికరంలోనే ఉంటుంది.")
 
 st.divider()
 st.markdown(
