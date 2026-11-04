@@ -50,10 +50,13 @@ def _ffmpeg_path() -> str:
 
 def _probe_duration(path: Path) -> float:
     """Read source duration from FFmpeg metadata for correctly timed end fades."""
-    probe = subprocess.run(
-        [_ffmpeg_path(), "-hide_banner", "-i", str(path)],
-        capture_output=True, text=True, timeout=30,
-    )
+    try:
+        probe = subprocess.run(
+            [_ffmpeg_path(), "-hide_banner", "-i", str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ComedyEditError("Reading video metadata timed out. Try a shorter or simpler video.") from exc
     match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr or "")
     if not match:
         raise ComedyEditError("Could not read the input video's duration.")
@@ -122,7 +125,13 @@ def render_comedy_edit(
         video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
-        probe = subprocess.run([_ffmpeg_path(), "-hide_banner", "-i", str(source)], capture_output=True, text=True, timeout=30)
+        try:
+            probe = subprocess.run(
+                [_ffmpeg_path(), "-hide_banner", "-i", str(source)],
+                capture_output=True, text=True, timeout=30,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ComedyEditError("Checking the original audio track timed out. Try a shorter video.") from exc
         has_original_audio = bool(re.search(r"Stream #\d+:\d+.*Audio:", probe.stderr or ""))
         cmd += ["-stream_loop", "-1", "-i", str(music_file)]
         if has_original_audio:
