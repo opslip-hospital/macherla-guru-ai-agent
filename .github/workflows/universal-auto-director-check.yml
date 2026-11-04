@@ -1,0 +1,74 @@
+name: Universal Auto Director real render tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "gpu_worker/comedy_edit.py"
+      - "gpu_worker/auto_director.py"
+      - "gpu_worker/auto_subtitles.py"
+      - "pages/4_Universal_AI_Auto_Director.py"
+      - ".github/workflows/universal-auto-director-check.yml"
+  workflow_dispatch:
+
+jobs:
+  render-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install editor dependencies
+        run: python -m pip install --upgrade pip imageio-ffmpeg
+      - name: Compile editor modules
+        run: python -m py_compile gpu_worker/comedy_edit.py gpu_worker/auto_director.py gpu_worker/auto_subtitles.py
+      - name: Render real synthetic MP4s and verify audio, silent input, music, subtitles, and speed
+        run: |
+          python - <<'PY'
+          import subprocess
+          import tempfile
+          from pathlib import Path
+          import imageio_ffmpeg
+          from gpu_worker.comedy_edit import render_comedy_edit
+
+          ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+          with tempfile.TemporaryDirectory() as temp:
+              root = Path(temp)
+              silent = root / "silent.mp4"
+              voiced = root / "voiced.mp4"
+              music = root / "music.m4a"
+              srt = root / "captions.srt"
+
+              def run(args):
+                  result = subprocess.run(args, capture_output=True, text=True, timeout=120)
+                  if result.returncode:
+                      raise RuntimeError((result.stderr or result.stdout)[-3000:])
+
+              run([ffmpeg, "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=3",
+                   "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(silent)])
+              run([ffmpeg, "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=3",
+                   "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3",
+                   "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(voiced)])
+              run([ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=3",
+                   "-c:a", "aac", str(music)])
+              srt.write_text("1\\n00:00:00,200 --> 00:00:02,500\\nTest caption\\n", encoding="utf-8")
+
+              cases = [
+                  ("silent-no-music", silent, {}),
+                  ("voiced-no-music-fast", voiced, {"playback_speed": 1.15}),
+                  ("voiced-music-srt-slow", voiced, {"music_file": str(music), "subtitle_file": str(srt), "playback_speed": 0.85}),
+                  ("silent-with-music", silent, {"music_file": str(music)}),
+              ]
+              for label, source, options in cases:
+                  output = root / f"{label}.mp4"
+                  render_comedy_edit(str(source), str(output), max_duration=3, intensity="High",
+                                     aspect_ratio="9:16", timeout_seconds=180, **options)
+                  if not output.is_file() or output.stat().st_size < 1024:
+                      raise RuntimeError(f"{label}: output MP4 missing or too small")
+                  probe = subprocess.run([ffmpeg, "-hide_banner", "-i", str(output)],
+                                         capture_output=True, text=True, timeout=30)
+                  if "Video:" not in (probe.stderr or "") or "Duration:" not in (probe.stderr or ""):
+                      raise RuntimeError(f"{label}: FFmpeg could not read output MP4")
+                  print(f"PASS {label}: {output.stat().st_size} bytes")
+          PY
