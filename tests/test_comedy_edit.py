@@ -17,6 +17,11 @@ class ComedyEditTests(unittest.TestCase):
         self.assertIn("1280x720", build_comedy_filter("16:9", "Medium"))
         self.assertIn("720x720", build_comedy_filter("1:1", "Extreme"))
 
+    def test_scene_aware_zoom_is_added(self):
+        value = build_comedy_filter("9:16", "High", punch_times=[1.25, 3.0])
+        self.assertIn("between(on,37,43)", value)
+        self.assertIn("between(on,90,96)", value)
+
     def test_invalid_ratio_rejected(self):
         with self.assertRaises(ComedyEditError):
             build_comedy_filter("4:3", "High")
