@@ -71,7 +71,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 )
             data = Path(rendered).read_bytes()
             st.success("3/3 వీడియో ఎడిటింగ్ పూర్తయింది!")
-            st.video(data)
+            st.info("ఫోన్‌లో dashboard buffering తగ్గించడానికి inline preview ఆఫ్‌లో ఉంది. కింద ఉన్న Download Final MP4 ద్వారా వీడియోను సేవ్ చేసి Gallery లేదా VLCలో ప్లే చేయండి.")
             st.download_button(
                 "⬇️ Download Final MP4", data=data,
                 file_name="universal-edited-final.mp4", mime="video/mp4",
