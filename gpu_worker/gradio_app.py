@@ -14,6 +14,7 @@ import gradio as gr
 import spaces
 
 from ti2v_adapter import TI2VSetupError, run_ti2v_job
+from wan_animate_adapter import WanSetupError, run_wan_animate_job
 
 
 def _file_info(path: str | None, label: str) -> dict:
@@ -87,6 +88,40 @@ def generate_new_scene(prompt_te, aspect_ratio, reference_path):
     return str(rendered)
 
 
+@spaces.GPU(duration=240)
+def animate_or_replace_character(video_path, reference_path, mode, resolution):
+    """Animate/replace a reference character in the uploaded driving video."""
+    wan_repo = os.environ.get("WAN_REPO_PATH", "").strip()
+    checkpoint = os.environ.get("WAN_ANIMATE_CHECKPOINT", "").strip()
+    if not wan_repo or not checkpoint:
+        raise gr.Error(
+            "Wan2.2 Animate ఇంకా configure కాలేదు. Spaceలో WAN_REPO_PATH మరియు "
+            "WAN_ANIMATE_CHECKPOINT సిద్ధం చేసిన తర్వాత మాత్రమే ఇది పనిచేస్తుంది. "
+            "మోడల్ weights ఆటోమేటిక్‌గా download కావు."
+        )
+    _file_info(video_path, "మూల వీడియో")
+    _file_info(reference_path, "క్యారెక్టర్ ఫోటో")
+    if mode not in {"animate_reference", "replace_character"}:
+        raise gr.Error("ఈ tabలో animate_reference లేదా replace_character మాత్రమే ఎంచుకోండి.")
+    width, height = (720, 1280) if resolution == "9:16" else (1280, 720)
+    output_dir = Path(tempfile.mkdtemp(prefix="macherla_animate_"))
+    try:
+        rendered = run_wan_animate_job(
+            wan_repo=wan_repo,
+            checkpoint_dir=checkpoint,
+            video_path=video_path,
+            reference_image=reference_path,
+            output_dir=str(output_dir),
+            mode=mode,
+            resolution_width=width,
+            resolution_height=height,
+            timeout_seconds=230,
+        )
+    except WanSetupError as exc:
+        raise gr.Error(str(exc)) from exc
+    return str(rendered)
+
+
 @spaces.GPU(duration=30)
 def inspect_gpu():
     try:
@@ -127,6 +162,25 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
             inputs=[prompt, ratio, ref_image],
             outputs=rendered_video,
         )
+    with gr.Tab("క్యారెక్టర్ మార్చు / animate"):
+        source_video = gr.Video(label="మూల వీడియో (డ్రైవింగ్ వీడియో)", sources=["upload"])
+        character_image = gr.Image(label="కొత్త క్యారెక్టర్ రిఫరెన్స్ ఫోటో", type="filepath")
+        character_mode = gr.Radio(
+            choices=[
+                ("ఫోటో క్యారెక్టర్‌కు వీడియో కదలికలు ఇవ్వు", "animate_reference"),
+                ("వీడియోలోని క్యారెక్టర్‌ను మార్చు", "replace_character"),
+            ],
+            value="animate_reference",
+            label="పని రకం",
+        )
+        character_ratio = gr.Radio(choices=["9:16", "16:9"], value="9:16", label="Resolution ratio")
+        animate_button = gr.Button("క్యారెక్టర్ వీడియో తయారు చేయి", variant="primary")
+        character_output = gr.Video(label="తయారైన క్యారెక్టర్ వీడియో (MP4)")
+        animate_button.click(
+            animate_or_replace_character,
+            inputs=[source_video, character_image, character_mode, character_ratio],
+            outputs=character_output,
+        )
     with gr.Tab("మూల వీడియో తనిఖీ"):
         with gr.Row():
             video = gr.Video(label="మూల వీడియో", sources=["upload"])
@@ -151,7 +205,7 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         "### పరిమితులు\\n"
         "- కొత్త సన్నివేశాల కోసం Wan2.2 TI2V-5B runner కనెక్ట్ చేయబడింది; "
         "కానీ model weights / GPU ఇంకా configure చేయలేదు.\\n"
-        "- పాత వీడియోలోని క్యారెక్టర్ animation/replacement ఇంకా UIకి కనెక్ట్ కాలేదు.\\n"
+        "- పాత వీడియోలో క్యారెక్టర్ animation/replacement tab ఉంది; కానీ WAN_ANIMATE_CHECKPOINT, GPU లేకుండా render జరగదు.\\n"
         "- తెలుగు voice generation, lip-sync, multi-scene stitching ఇంకా చేయాల్సి ఉంది.\\n"
         "- మోడల్ weights ఆటోమేటిక్‌గా download కావు; paid hardware అనుమతి లేకుండా enable చేయరాదు."
     )
