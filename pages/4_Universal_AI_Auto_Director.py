@@ -1,3 +1,4 @@
+import importlib
 import json
 import logging
 import tempfile
@@ -6,8 +7,14 @@ from pathlib import Path
 import streamlit as st
 
 from gpu_worker.auto_director import detect_scene_changes, make_comedy_edit_decision
-from gpu_worker.comedy_edit import ComedyEditError, render_comedy_edit
+from gpu_worker import comedy_edit
 from gpu_worker.auto_subtitles import SubtitleError, transcribe_to_srt
+
+# Streamlit multipage sessions can retain imported modules after a page hot-reload.
+# Reload the editor module so the UI and renderer always use the same function signature.
+comedy_edit = importlib.reload(comedy_edit)
+ComedyEditError = comedy_edit.ComedyEditError
+render_comedy_edit = comedy_edit.render_comedy_edit
 
 st.set_page_config(page_title="Universal AI Auto Director", page_icon="🎬", layout="centered")
 st.title("🎬 Universal AI Auto Director & Video Editor")
