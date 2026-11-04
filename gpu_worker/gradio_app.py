@@ -317,7 +317,7 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
             placeholder="యముడు దున్నపోతుపై భయపడుతూ వస్తాడు. PJ Babu ఏమైందని అడుగుతాడు...",
         )
         planner_character = gr.Textbox(label="ప్రధాన పాత్ర", value="PJ Babu")
-        planner_ratio = gr.Radio(choices=["9:16", "16:9", "1:1"], value="9:16", label="వీడియో నిష్పత్తి")
+        planner_ratio = gr.Radio(choices=["9:16", "16:9"], value="9:16", label="వీడియో నిష్పత్తి (Wan2.2 మద్దతు)")
         planner_style = gr.Textbox(label="విజువల్ స్టైల్", value="సినిమాటిక్ 3D CGI")
         planner_duration = gr.Slider(minimum=3, maximum=30, value=10, step=1, label="మొత్తం నిడివి (సెకన్లు)")
         planner_button = gr.Button("Geminiతో సీన్ల ప్లాన్ తయారు చేయి", variant="primary")
