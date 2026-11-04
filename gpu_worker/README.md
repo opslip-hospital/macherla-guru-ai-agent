@@ -15,14 +15,15 @@ This is an isolated GPU-worker prototype. It is **not deployed and has not rende
 
 ## UI paths
 
+- **Telugu voice:** creates a separate MP3 using the online Edge TTS service, with Telugu male (Mohan) and female (Shruti) voices.
 - **New scene:** Wan2.2 TI2V-5B text-to-video or image-to-video runner.
 - **Animate / replace character:** Wan2.2 Animate-14B runner using an uploaded driving video and character reference image.
 - **Preflight:** validates source files and displays a job manifest.
 - **GPU status:** checks whether CUDA hardware is visible.
 
-Both generation paths are connected to guarded runners. They use argument arrays (not shell commands), bounded execution time, and MP4 container validation. The UI currently reserves up to 120 seconds per GPU call; that may be too short for model loading or inference.
+The Telugu voice tab is independent of GPU inference. It needs an internet connection and the Edge TTS online service; availability and service behavior may change. It creates an MP3 only, not lip-sync or a finished video soundtrack.
 
-## Not ready to deploy as a working generator
+## Not ready to deploy as a working video generator
 
 The Space still needs:
 1. The official Wan2.2 source repository and compatible Python dependencies.
@@ -36,7 +37,7 @@ No model weights are downloaded automatically. Do not enable paid hardware or cr
 
 - The current TI2V test is deliberately short (41 frames), not a full 10-second story.
 - Wan2.2 TI2V/Animate models generate silent video; they do not create Telugu dialogue audio.
-- Telugu TTS or recorded dialogue, accurate Telugu lip-sync, scene stitching, sound effects, and final audio mixing are not implemented.
+- Telugu TTS is a separate MP3 output; accurate Telugu lip-sync, scene stitching, sound effects, and final audio mixing are not implemented.
 - The source-video preflight tab does not itself render a video; use the dedicated generation tabs when model configuration is complete.
 
 ## Validation
