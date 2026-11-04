@@ -24,7 +24,7 @@ class VideoMuxTests(unittest.TestCase):
         )
         self.assertIn("0:v:0", command)
         self.assertIn("1:a:0", command)
-        self.assertIn("-shortest", command)
+        self.assertNotIn("-shortest", command)
         self.assertIn("copy", command)
 
     def test_mixes_original_audio_when_requested(self):
