@@ -20,6 +20,8 @@ video = st.file_uploader("Upload any raw video (MP4/MOV/MKV/WEBM)", type=["mp4",
 ratio = st.selectbox("Output format", ["9:16 Shorts", "16:9 Landscape", "1:1 Square"], index=0)
 ratio_value = {"9:16 Shorts": "9:16", "16:9 Landscape": "16:9", "1:1 Square": "1:1"}[ratio]
 intensity = st.select_slider("Dynamic punch intensity", options=["Medium", "High", "Extreme"], value="High")
+speed_label = st.select_slider("Video speed", options=["Slow cinematic (0.85x)", "Normal (1.0x)", "Fast (1.15x)"], value="Normal (1.0x)")
+playback_speed = {"Slow cinematic (0.85x)": 0.85, "Normal (1.0x)": 1.0, "Fast (1.15x)": 1.15}[speed_label]
 duration = st.slider("Maximum output duration (seconds)", 1, 20, 20)
 threshold = st.slider("Scene-change sensitivity", 0.10, 0.60, 0.28, 0.02)
 music = st.file_uploader("Optional background music (MP3/WAV/AAC)", type=["mp3", "wav", "aac", "m4a"])
@@ -64,6 +66,8 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
             st.success("సినిమాటిక్ ఎడిటింగ్ ప్లాన్ సిద్ధమైంది — వివరాలు కింద ఉన్నాయి.")
             st.write(f"• Zoom style: Fast + Smooth ({intensity})")
             st.write("• Colour polish: Contrast, saturation, sharpening")
+            st.write(f"• Video speed: {speed_label}")
+            st.write("• Smooth fade-in / fade-out transitions")
             st.write("• Original dialogue: అలాగే ఉంచబడుతుంది")
             with st.spinner("2/3 Reframing, dynamic zooms, colour polish, audio mix…"):
                 rendered = render_comedy_edit(
@@ -71,6 +75,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     music_file=str(music_path) if music_path else None,
                     music_volume=music_volume, max_duration=duration, punch_times=cuts,
                     subtitle_file=str(subtitle_path) if subtitle_path else None,
+                    playback_speed=playback_speed,
                 )
             data = Path(rendered).read_bytes()
             st.success("3/3 వీడియో ఎడిటింగ్ పూర్తయింది!")
@@ -92,7 +97,7 @@ st.divider()
 st.markdown(
     "**ఈ వెర్షన్‌లో:** visual scene-change detection, scene-aware punch zooms, "
     "9:16/16:9/1:1 reframing, contrast/saturation/sharpen polish, original dialogue preservation, "
-    "optional low-volume background music, optional SRT subtitle burn-in (any language supported by the installed FFmpeg fonts), final MP4 + edit-plan export. "
+    "optional low-volume background music, adjustable 0.85x–1.15x speed, smooth fade-in/fade-out, optional SRT subtitle burn-in, final MP4 + edit-plan export. "
     "ఇంకా పూర్తి కాలేనివి: Telugu speech understanding, automatic subtitle timing (Whisper option added), face tracking, "
     "reaction-shot insertion, per-word sound effects, AI lip-sync, new scene generation."
 )
