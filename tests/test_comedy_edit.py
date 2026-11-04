@@ -54,7 +54,7 @@ class ComedyEditTests(unittest.TestCase):
             filters = subprocess.run([ffmpeg, "-filters"], capture_output=True, text=True, timeout=30)
             if " subtitles " in filters.stdout:
                 srt = Path(temp) / "captions.srt"
-                srt.write_text("1\\n00:00:00,000 --> 00:00:01,200\\nతెలుగు పరీక్ష\\n", encoding="utf-8")
+                srt.write_text("1\n00:00:00,000 --> 00:00:01,200\nతెలుగు పరీక్ష\n", encoding="utf-8")
                 captioned = Path(temp) / "captioned.mp4"
                 rendered = render_comedy_edit(str(source), str(captioned), subtitle_file=str(srt), max_duration=2)
                 self.assertTrue(Path(rendered).is_file())
