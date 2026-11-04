@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 
-from gemini_story_planner import GeminiPlannerError, generate_story_plan
+from gpu_worker.gemini_story_planner import GeminiPlannerError, generate_story_plan
 
 
 class GeminiStoryPlannerTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class GeminiStoryPlannerTests(unittest.TestCase):
         }
 
     def test_valid_plan_is_returned(self):
-        with patch("gemini_story_planner.requests.post", return_value=self._response(self._valid_plan())) as post:
+        with patch("gpu_worker.gemini_story_planner.requests.post", return_value=self._response(self._valid_plan())) as post:
             plan = generate_story_plan("యముడు భయపడుతూ వస్తాడు", api_key="test-key")
         self.assertEqual(plan["title_te"], "యముడి కష్టం")
         self.assertIn("x-goog-api-key", post.call_args.kwargs["headers"])
@@ -55,7 +55,7 @@ class GeminiStoryPlannerTests(unittest.TestCase):
                 generate_story_plan("యముడు వస్తాడు", api_key="test-key")
 
     def test_markdown_json_fence_is_supported(self):
-        from gemini_story_planner import _extract_json
+        from gpu_worker.gemini_story_planner import _extract_json
         parsed = _extract_json("```json\n{\"title_te\": \"సరే\"}\n```")
         self.assertEqual(parsed["title_te"], "సరే")
 
