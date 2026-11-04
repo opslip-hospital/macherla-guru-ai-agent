@@ -24,10 +24,28 @@ and operator-provided Wan2.2 TI2V-5B model weights. No weights are downloaded
 automatically. Set Space Secrets/Variables: GEMINI_API_KEY (for planning),
 WAN_REPO_PATH and WAN_TI2V_CHECKPOINT (for video rendering).
 
-The full-story renderer needs a persistent CUDA GPU. Do not select paid hardware
-or enable billing without the account owner's explicit approval. This bundle has
-passed code/unit tests only; real model inference and Telugu lip-sync are not
-verified or implemented.
+The full-story renderer needs a persistent CUDA GPU. ZeroGPU is only a short,
+quota-limited Gradio GPU allocation and is NOT suitable for this multi-scene runner.
+Do not select paid hardware or enable billing without the account owner's explicit
+approval. This bundle has passed code/unit tests only; real model inference and
+Telugu lip-sync are not verified or implemented.
+
+## Create this Space (account owner action required)
+
+1. Sign in at https://huggingface.co and open https://huggingface.co/new-space.
+2. Choose a unique Space name, select **Gradio**, and create the Space.
+3. Upload the files from this bundle to the Space repository (including app.py,
+   all Python modules, requirements.txt and this README.md).
+4. For story planning, add GEMINI_API_KEY under Space Settings > Secrets.
+5. Do not add billing details, buy credits, or select paid GPU hardware unless
+   the account owner has explicitly decided to pay.
+6. A ZeroGPU Space may be available to eligible free personal accounts, but its
+   daily quota is only 5 GPU minutes and it does not make the full-story runner
+   work. Confirm account eligibility in the Space hardware selector.
+7. Actual multi-scene Wan2.2 rendering remains blocked until a persistent,
+   compatible CUDA GPU and model checkpoints are provided and tested.
+
+Never paste Hugging Face access tokens or Gemini API keys into chat or source files.
 """
 
 def build_bundle(source_dir: str | Path, output_dir: str | Path) -> Path:
