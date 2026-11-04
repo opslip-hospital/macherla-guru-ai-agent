@@ -71,7 +71,7 @@ def analyze_video_with_gemini(video_path: str, api_key: str, *, mime_type: str =
             "do not claim to create or insert a new shot."
         )
         response = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
             headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
             json={"contents": [{"parts": [{"file_data": {"mime_type": mime_type, "file_uri": uri}},
                                             {"text": prompt}]}],
