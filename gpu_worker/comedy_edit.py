@@ -64,6 +64,18 @@ def _probe_duration(path: Path) -> float:
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
+def _has_audio_stream(path: Path) -> bool:
+    """Detect whether the source has audio before applying audio filters."""
+    try:
+        probe = subprocess.run(
+            [_ffmpeg_path(), "-hide_banner", "-i", str(path)],
+            capture_output=True, text=True, timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ComedyEditError("Checking the original audio track timed out. Try a shorter video.") from exc
+    return bool(re.search(r"Stream #\\d+:\\d+.*Audio:", probe.stderr or ""))
+
+
 def _retime_srt(path: Path, speed: float) -> Path:
     """Retiming captions keeps subtitle sync when the video speed changes."""
     if abs(speed - 1.0) < 0.001:
@@ -114,6 +126,7 @@ def render_comedy_edit(
     if subtitle_file and (not Path(subtitle_file).is_file() or Path(subtitle_file).stat().st_size == 0):
         raise ComedyEditError("Subtitle SRT file is missing or empty.")
     source_duration = _probe_duration(source)
+    has_original_audio = _has_audio_stream(source)
     output_duration = min(float(max_duration), source_duration / float(playback_speed))
     fade_out_start = max(0.0, output_duration - 0.35)
     audio_fade_out_start = max(0.0, output_duration - 0.25)
@@ -125,14 +138,6 @@ def render_comedy_edit(
         video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
-        try:
-            probe = subprocess.run(
-                [_ffmpeg_path(), "-hide_banner", "-i", str(source)],
-                capture_output=True, text=True, timeout=30,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise ComedyEditError("Checking the original audio track timed out. Try a shorter video.") from exc
-        has_original_audio = bool(re.search(r"Stream #\d+:\d+.*Audio:", probe.stderr or ""))
         cmd += ["-stream_loop", "-1", "-i", str(music_file)]
         if has_original_audio:
             graph = (
@@ -147,8 +152,14 @@ def render_comedy_edit(
                 f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[a]"
             )
         cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
+    elif has_original_audio:
+        cmd += [
+            "-vf", video_filter, "-map", "0:v:0", "-map", "0:a:0",
+            "-af", f"atempo={float(playback_speed):.3f},afade=t=in:st=0:d=0.15,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25",
+        ]
     else:
-        cmd += ["-vf", video_filter, "-map", "0:v:0", "-map", "0:a?", "-af", f"atempo={float(playback_speed):.3f},afade=t=in:st=0:d=0.15,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25"]
+        # Silent source: do not attach an audio filter or optional audio map.
+        cmd += ["-vf", video_filter, "-map", "0:v:0"]
     cmd += [
         "-t", str(float(max_duration)), "-c:v", "libx264", "-preset", "veryfast",
         "-crf", "19", "-r", "30", "-c:a", "aac", "-b:a", "192k",
