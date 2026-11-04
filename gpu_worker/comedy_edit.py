@@ -46,6 +46,7 @@ def render_comedy_edit(
     intensity: str = "High",
     music_file: str | None = None,
     music_volume: float = 0.12,
+    subtitle_file: str | None = None,
     max_duration: float = 20.0,
     timeout_seconds: int = 900,
     punch_times: list[float] | None = None,
@@ -59,7 +60,12 @@ def render_comedy_edit(
         raise ComedyEditError("Background music volume must be between 0 and 0.35.")
     if music_file and (not Path(music_file).is_file() or Path(music_file).stat().st_size == 0):
         raise ComedyEditError("Background music file is missing or empty.")
+    if subtitle_file and (not Path(subtitle_file).is_file() or Path(subtitle_file).stat().st_size == 0):
+        raise ComedyEditError("Subtitle SRT file is missing or empty.")
     video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times)
+    if subtitle_file:
+        escaped = str(Path(subtitle_file).resolve()).replace("\\\\", "/").replace(":", "\\\\:").replace("'", "\\\\'")
+        video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
         probe = subprocess.run([_ffmpeg_path(), "-hide_banner", "-i", str(source)], capture_output=True, text=True, timeout=30)
