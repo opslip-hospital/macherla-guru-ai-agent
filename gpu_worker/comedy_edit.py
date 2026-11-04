@@ -135,7 +135,7 @@ def render_comedy_edit(
     if subtitle_file:
         subtitle_path = _retime_srt(Path(subtitle_file), float(playback_speed))
         escaped = str(subtitle_path.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-        video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
+        video_filter += f",subtitles='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
         cmd += ["-stream_loop", "-1", "-i", str(music_file)]
