@@ -68,8 +68,10 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
         output = root / "universal_edited_final.mp4"
         speech_points_path = root / "speech_punch_points.json"
         transcript_path = root / "speech_transcript.json"
+        word_timestamps_path = root / "speech_word_timestamps.json"
         speech_points = []
         transcript_segments = []
+        speech_word_timestamps = []
         face_track_points = []
         gemini_result = {"summary": "", "moments": []}
         try:
@@ -84,11 +86,13 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
             if auto_subtitles and subtitle is None:
                 language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
                 with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):
-                    subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model, punch_points_path=str(speech_points_path), transcript_path=str(transcript_path)))
+                    subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model, punch_points_path=str(speech_points_path), transcript_path=str(transcript_path), word_timestamps_path=str(word_timestamps_path)))
                 if speech_points_path.is_file():
                     speech_points = json.loads(speech_points_path.read_text(encoding="utf-8"))
                 if transcript_path.is_file():
                     transcript_segments = json.loads(transcript_path.read_text(encoding="utf-8"))
+                if word_timestamps_path.is_file():
+                    speech_word_timestamps = json.loads(word_timestamps_path.read_text(encoding="utf-8"))
             with st.spinner("1/3 వీడియో సీన్లను విశ్లేషిస్తున్నాం…"):
                 cuts = detect_scene_changes(str(source), threshold=threshold, max_duration=duration)
                 if face_tracking:
@@ -100,6 +104,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 plan["gemini_story_summary"] = gemini_result.get("summary", "")
                 plan["gemini_director_moments"] = gemini_result.get("moments", [])
                 plan["speech_transcript"] = transcript_segments
+                plan["speech_word_timestamps"] = speech_word_timestamps
                 plan["note"] += " Speech phrase starts can also guide punch zoom timing when Whisper subtitles are enabled."
                 gemini_times = [float(item["time"]) for item in gemini_result.get("moments", [])]
                 punch_times = sorted({round(float(x), 3) for x in cuts + speech_points + gemini_times if 0.15 < float(x) < float(duration)})
@@ -125,6 +130,9 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 with st.expander("🗣️ గుర్తించిన మాటలు / Speech transcript", expanded=True):
                     for segment in transcript_segments:
                         st.write("{:.2f}s–{:.2f}s: {}".format(segment["start"], segment["end"], segment["text"]))
+                    if speech_word_timestamps:
+                        with st.expander("Word-level timing (lip-sync preparation)", expanded=False):
+                            st.write(" · ".join("{} [{:.2f}–{:.2f}s]".format(item["word"], item["start"], item["end"]) for item in speech_word_timestamps))
             if cuts:
                 st.write("Dynamic punch points: " + ", ".join(f"{x:.2f}s" for x in cuts))
             else:
@@ -171,7 +179,7 @@ st.markdown(
     "**ఈ వెర్షన్‌లో:** visual scene-change detection, smooth scene-aware punch zooms, "
     "9:16/16:9/1:1 reframing, experimental face-aware crop tracking, contrast/saturation/sharpen polish, original dialogue preservation, "
     "optional low-volume background music and timed comedy/reaction sound-effect overlays at director punch cues, adjustable 0.85x–1.15x speed, smooth fade-in/fade-out, optional SRT subtitles, "
-    "Whisper multilingual speech-to-text with transcript and phrase-timed punch points, optional Gemini video/story/dialogue moment analysis, final MP4 + JSON edit-plan export. "
+    "Whisper multilingual speech-to-text with transcript, word-level timing and phrase-timed punch points, optional Gemini video/story/dialogue moment analysis, timed uploaded SFX overlays, final MP4 + JSON edit-plan export. "
     "**ఇంకా అందుబాటులో లేనివి:** automatic reaction-shot insertion, per-word sound-effect selection, AI lip-sync generation, and new-scene generation. "
     "Gemini and face tracking require real-video testing; face detection can miss stylized/cartoon characters."
 )
