@@ -15,6 +15,7 @@ from video_mux import VideoMuxError, mux_dialogue_into_video
 from scene_stitch import SceneStitchError, stitch_scene_videos
 from ti2v_adapter import TI2VSetupError, run_ti2v_job
 from wan_animate_adapter import WanSetupError, run_wan_animate_job
+from gemini_story_planner import GeminiPlannerError, generate_story_plan
 
 
 def _file_info(path: str | None, label: str) -> dict:
@@ -53,6 +54,21 @@ def prepare_job(video_path, reference_path, story_te, mode, aspect_ratio):
         "ఇన్‌పుట్ తనిఖీ విజయవంతం. ఇది ఇంకా వీడియో రెండర్ చేయలేదు. "
         "ఇది preflight తనిఖీ మాత్రమే; MP4 కోసం పై generation tabs ఉపయోగించండి."
     )
+
+
+
+def plan_telugu_story(story_te, character_name, aspect_ratio, visual_style, duration_seconds):
+    try:
+        plan = generate_story_plan(
+            story_te,
+            character_name=character_name,
+            aspect_ratio=aspect_ratio,
+            visual_style=visual_style,
+            duration_seconds=int(duration_seconds),
+        )
+    except (GeminiPlannerError, ValueError) as exc:
+        raise gr.Error(str(exc)) from exc
+    return json.dumps(plan, ensure_ascii=False, indent=2)
 
 
 def create_telugu_voice(dialogue, voice_label, rate_label):
@@ -230,6 +246,34 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         "తెలుగు కథ ఆధారంగా కొత్త సన్నివేశం తయారు చేయడానికి ప్రయోగాత్మక వర్కర్. "
         "మోడల్ ఫైల్స్ సిద్ధంగా ఉన్నప్పుడు మాత్రమే నిజమైన MP4 render ప్రారంభమవుతుంది."
     )
+
+    with gr.Tab("AI కథా ప్లానర్"):
+        gr.Markdown(
+            "తెలుగులో కథ రాస్తే Gemini దాన్ని సీన్లుగా విభజించి, ప్రతి సీన్‌కు "
+            "visual prompt, camera, పాత్రలు, తెలుగు డైలాగ్‌లు తయారు చేస్తుంది. "
+            "ఇది కథా ప్లాన్ మాత్రమే; ఇంకా వీడియో render చేయదు."
+        )
+        planner_story = gr.Textbox(
+            label="మీ కథ (తెలుగులో)",
+            lines=5,
+            placeholder="యముడు దున్నపోతుపై భయపడుతూ వస్తాడు. PJ Babu ఏమైందని అడుగుతాడు...",
+        )
+        planner_character = gr.Textbox(label="ప్రధాన పాత్ర", value="PJ Babu")
+        planner_ratio = gr.Radio(choices=["9:16", "16:9", "1:1"], value="9:16", label="వీడియో నిష్పత్తి")
+        planner_style = gr.Textbox(label="విజువల్ స్టైల్", value="సినిమాటిక్ 3D CGI")
+        planner_duration = gr.Slider(minimum=3, maximum=30, value=10, step=1, label="మొత్తం నిడివి (సెకన్లు)")
+        planner_button = gr.Button("Geminiతో సీన్ల ప్లాన్ తయారు చేయి", variant="primary")
+        planner_output = gr.Code(label="సీన్ ప్లాన్ JSON", language="json")
+        planner_button.click(
+            plan_telugu_story,
+            inputs=[planner_story, planner_character, planner_ratio, planner_style, planner_duration],
+            outputs=planner_output,
+        )
+        gr.Markdown(
+            "ఈ tab కోసం Hugging Face Space Secretsలో GEMINI_API_KEY అవసరం. "
+            "ఐచ్చికంగా GEMINI_MODEL ఇవ్వవచ్చు. API keyని కోడ్‌లో పెట్టవద్దు."
+        )
+
     with gr.Tab("తెలుగు వాయిస్"):
         dialogue = gr.Textbox(
             label="తెలుగు డైలాగ్",
