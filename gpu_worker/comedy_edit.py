@@ -20,18 +20,18 @@ def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", pun
     if intensity not in {"Medium", "High", "Extreme"}:
         raise ComedyEditError("Intensity must be Medium, High, or Extreme.")
     width, height = sizes[aspect_ratio]
-    zoom = {"Medium": "1.07", "High": "1.12", "Extreme": "1.18"}[intensity]
-    # A cosine ease gives a quick but continuous zoom pulse instead of
-    # the old frame-by-frame 1.0/1.12 toggle that looked jerky.
-    base_cycle_frames = 72  # 2.4 seconds: brisk in/out motion at 30 fps
+    zoom = {"Medium": "1.14", "High": "1.20", "Extreme": "1.26"}[intensity]
+    punch_zoom = {"Medium": "1.22", "High": "1.30", "Extreme": "1.38"}[intensity]
+    # Noticeable 1.8-second push/pull cycle with cosine easing: fast but fluid.
+    base_cycle_frames = 54  # 1.8 seconds at 30 fps
     base_expr = f"1+({zoom}-1)*(0.5-0.5*cos(2*PI*mod(on,{base_cycle_frames})/{base_cycle_frames}))"
     z_expr = base_expr
-    # At each detected comedy beat, add a faster 0.6-second smooth punch.
+    # Stronger half-second cinematic punch at detected visual beats.
     for punch_time in reversed((punch_times or [])[:20]):
         start = max(0, int(float(punch_time) * 30))
-        end = start + 18
+        end = start + 15
         condition = f"between(on,{start},{end})"
-        pulse = f"1+({zoom}-1)*(0.5-0.5*cos(2*PI*(on-{start})/18))"
+        pulse = f"1+({punch_zoom}-1)*(0.5-0.5*cos(2*PI*(on-{start})/15))"
         z_expr = f"if({condition},{pulse},{z_expr})"
     return (
         f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
