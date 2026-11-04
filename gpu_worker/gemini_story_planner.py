@@ -12,7 +12,10 @@ from typing import Any
 
 import requests
 
-from story_plan import build_story_planner_prompt, validate_story_plan
+try:
+    from .story_plan import build_story_planner_prompt, validate_story_plan
+except ImportError:  # Hugging Face Space runs app.py from the worker directory
+    from story_plan import build_story_planner_prompt, validate_story_plan
 
 
 class GeminiPlannerError(RuntimeError):
