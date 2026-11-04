@@ -10,6 +10,7 @@ import gradio as gr
 import spaces
 
 from telugu_tts import TELUGU_VOICES, TeluguTTSSetupError, synthesize_telugu_speech
+from dialogue_audio import DialogueAudioError, build_dialogue_soundtrack
 from ti2v_adapter import TI2VSetupError, run_ti2v_job
 from wan_animate_adapter import WanSetupError, run_wan_animate_job
 
@@ -188,6 +189,40 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
             "గమనిక: ఇది ఆన్‌లైన్ TTS సేవ. MP3 మాత్రమే తయారవుతుంది; "
             "వీడియోలో పెదవుల కదలికలకు సరిపోల్చడం ఇంకా కలపలేదు."
         )
+    with gr.Tab("పాత్రల డైలాగ్ ఆడియో"):
+        gr.Markdown(
+            "ప్రతి లైన్‌ను **పాత్ర పేరు|వాయిస్|తెలుగు డైలాగ్** రూపంలో రాయండి. "
+            "ఉదాహరణకు PJ Babu, యముడు ఇద్దరికీ వేర్వేరు లైన్లు ఇవ్వవచ్చు."
+        )
+        dialogue_script = gr.Textbox(
+            label="పాత్రల డైలాగ్ స్క్రిప్ట్",
+            lines=7,
+            value=(
+                "PJ Babu|Mohan (పురుష వాయిస్)|ఏమైంది స్వామీ?\\n"
+                "యముడు|Mohan (పురుష వాయిస్)|గిన్నెలు నీట్‌గా తోమలేదని చీపురుతో కొట్టిందిరా!"
+            ),
+        )
+        dialogue_gap = gr.Radio(
+            choices=["వెంటనే", "చిన్న విరామం", "కొంచెం ఎక్కువ"],
+            value="చిన్న విరామం",
+            label="డైలాగ్‌ల మధ్య విరామం",
+        )
+        dialogue_rate = gr.Radio(
+            choices=["నెమ్మదిగా", "సాధారణం", "వేగంగా"],
+            value="సాధారణం",
+            label="మాట్లాడే వేగం",
+        )
+        dialogue_button = gr.Button("పాత్రల డైలాగ్ ఆడియో తయారు చేయి", variant="primary")
+        dialogue_output = gr.Audio(label="కలిపిన తెలుగు డైలాగ్ WAV", type="filepath")
+        dialogue_button.click(
+            create_dialogue_soundtrack,
+            inputs=[dialogue_script, dialogue_gap, dialogue_rate],
+            outputs=dialogue_output,
+        )
+        gr.Markdown(
+            "గమనిక: ఇది పాత్రల డైలాగ్‌లను క్రమంగా కలిపిన ఆడియో ట్రాక్ మాత్రమే. "
+            "ఇంకా క్యారెక్టర్ పెదవుల కదలికలకు sync చేయదు; వీడియోలో ఆటోమేటిక్‌గా కలపదు."
+        )
     with gr.Tab("కొత్త సన్నివేశం"):
         prompt = gr.Textbox(
             label="సన్నివేశం / డైలాగ్ సూచన (తెలుగులో)",
@@ -247,7 +282,7 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         "- కొత్త సన్నివేశాల కోసం Wan2.2 TI2V-5B runner కనెక్ట్ చేయబడింది; "
         "కానీ model weights / GPU ఇంకా configure చేయలేదు.\n"
         "- పాత వీడియోలో క్యారెక్టర్ animation/replacement tab ఉంది; కానీ WAN_ANIMATE_CHECKPOINT, GPU లేకుండా render జరగదు.\n"
-        "- తెలుగు వాయిస్ MP3 తయారు చేయవచ్చు; lip-sync, multi-scene stitching, sound effects ఇంకా చేయాల్సి ఉంది.\n"
+        "- తెలుగు పాత్రల డైలాగ్‌లను వేర్వేరుగా synthesize చేసి, విరామాలతో ఒక WAV soundtrackగా కలపవచ్చు; lip-sync, video muxing, multi-scene stitching, sound effects ఇంకా చేయాల్సి ఉంది.\n"
         "- మోడల్ weights ఆటోమేటిక్‌గా download కావు; paid hardware అనుమతి లేకుండా enable చేయరాదు."
     )
 
