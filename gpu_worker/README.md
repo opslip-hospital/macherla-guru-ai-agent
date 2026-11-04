@@ -18,7 +18,7 @@ This is an isolated GPU-worker prototype. It is **not deployed and has not rende
 - **Gemini story planner:** turns a Telugu story into a validated JSON scene plan with visual prompts, camera notes, characters, Telugu dialogue and continuity notes. Requires `GEMINI_API_KEY` in Space Secrets; optionally set `GEMINI_MODEL`. It plans only and does not render scenes.
 - **Scene render manifest:** converts the approved plan into per-scene Wan2.2 frame counts/prompts, a shared character-reference filename, and a validated Telugu dialogue script. It is a pre-render package only; it does not launch GPU inference.
 
-- **Sequential story render runner:** `story_render_runner.py` now connects a validated manifest to per-scene TI2V generation, scene stitching, Telugu dialogue synthesis, and final audio mux. It is a code path for a configured persistent GPU worker; it is not yet exposed as a one-click Space action or verified by real model inference. Each scene is rendered sequentially and needs the model/runtime to be installed.
+- **Sequential story render runner:** `story_render_runner.py` connects a validated manifest to per-scene TI2V generation, scene stitching, Telugu dialogue synthesis, and final audio mux. The Gradio UI now exposes this runner in a dedicated full-story tab, guarded so it only starts when a persistent CUDA GPU and model paths are configured. It has not been verified by real model inference.
 
 - **Telugu voice:** creates a separate MP3 using the online Edge TTS service, with Telugu male (Mohan) and female (Shruti) voices.
 - **Character dialogue soundtrack:** accepts speaker-labelled Telugu lines (`Speaker|Voice|Dialogue`), synthesizes each line, inserts short pauses, and joins them into one WAV soundtrack using FFmpeg.
