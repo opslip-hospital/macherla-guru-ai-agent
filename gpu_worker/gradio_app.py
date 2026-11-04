@@ -12,6 +12,7 @@ import spaces
 from telugu_tts import TELUGU_VOICES, TeluguTTSSetupError, synthesize_telugu_speech
 from dialogue_audio import DialogueAudioError, build_dialogue_soundtrack
 from video_mux import VideoMuxError, mux_dialogue_into_video
+from scene_stitch import SceneStitchError, stitch_scene_videos
 from ti2v_adapter import TI2VSetupError, run_ti2v_job
 from wan_animate_adapter import WanSetupError, run_wan_animate_job
 
@@ -88,6 +89,29 @@ def create_dialogue_soundtrack(script, gap_label, rate_label):
             rate=rates.get(rate_label, "+0%"),
         )
     except DialogueAudioError as exc:
+        raise gr.Error(str(exc)) from exc
+    return str(result)
+
+
+
+def combine_generated_scenes(scene_paths, aspect_ratio):
+    if not scene_paths or len(scene_paths) < 2:
+        raise gr.Error("కనీసం 2 సన్నివేశాల MP4 ఫైళ్లు upload చేయండి.")
+    if len(scene_paths) > 12:
+        raise gr.Error("గరిష్ఠంగా 12 సన్నివేశాలనే కలపగలం.")
+    for index, path in enumerate(scene_paths, start=1):
+        _file_info(path, f"సన్నివేశం {index}")
+    output_dir = Path(tempfile.mkdtemp(prefix="macherla_story_scenes_"))
+    output_file = output_dir / "macherla_story_scenes.mp4"
+    try:
+        result = stitch_scene_videos(
+            scene_files=list(scene_paths),
+            output_file=str(output_file),
+            aspect_ratio=aspect_ratio,
+            fps=24,
+            timeout_seconds=900,
+        )
+    except SceneStitchError as exc:
         raise gr.Error(str(exc)) from exc
     return str(result)
 
@@ -262,6 +286,30 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         gr.Markdown(
             "గమనిక: ఇది పాత్రల డైలాగ్‌లను క్రమంగా కలిపిన ఆడియో ట్రాక్ మాత్రమే. "
             "ఇంకా క్యారెక్టర్ పెదవుల కదలికలకు sync చేయదు; వీడియోలో ఆటోమేటిక్‌గా కలపదు."
+        )
+    with gr.Tab("సీన్లను కలిపి కథ తయారు చేయి"):
+        gr.Markdown(
+            "AIతో విడివిడిగా తయారుచేసిన 2–12 MP4 సీన్లను క్రమంగా upload చేయండి. "
+            "అన్నింటినీ ఒకే resolution, 24 FPSకి మార్చి ఒక silent story MP4గా కలుపుతుంది. "
+            "తర్వాత 'వీడియో + డైలాగ్ కలపు' tabలో తెలుగు soundtrack జోడించండి."
+        )
+        scene_files = gr.File(
+            label="సన్నివేశాలు (క్రమంలో ఎంచుకోండి)",
+            file_count="multiple",
+            file_types=[".mp4"],
+            type="filepath",
+        )
+        scene_ratio = gr.Radio(
+            choices=["9:16", "16:9", "1:1"],
+            value="9:16",
+            label="Final story ratio",
+        )
+        stitch_button = gr.Button("అన్ని సీన్లను కలుపు", variant="primary")
+        stitched_video = gr.Video(label="కలిపిన కథ MP4")
+        stitch_button.click(
+            combine_generated_scenes,
+            inputs=[scene_files, scene_ratio],
+            outputs=stitched_video,
         )
     with gr.Tab("వీడియో + డైలాగ్ కలపు"):
         gr.Markdown(
