@@ -86,7 +86,7 @@ def prepare_story_render_manifest(plan_json, reference_path, default_voice):
         # Carry the approved plan, manifest and same reference image forward.
         return json.dumps(plan, ensure_ascii=False, indent=2), prepared, prepared, reference_path
     except json.JSONDecodeError as exc:
-        raise gr.Error("ముందుగా AI కథా ప్లానర్ ఇచ్చిన సరైన JSON ఇక్కడ paste చేయండి.") from exc
+        raise gr.Error("ముందుగా AI కథా ప్లానర్‌లో కథ తయారు చేసి, సీన్ Render Manifest బటన్ నొక్కండి.") from exc
     except (StoryRenderPlanError, TypeError, ValueError) as exc:
         raise gr.Error(str(exc)) from exc
 
@@ -353,8 +353,7 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         render_manifest_output = gr.Code(label="Render job manifest (ఇంకా render కాలేదు)", language="json")
     with gr.Tab("పూర్తి కథ వీడియో (GPU)"):
         gr.Markdown(
-            "అనుమతి ఇచ్చిన Scene Render Manifest JSONను ఇక్కడ paste చేసి, "
-            "అదే పాత్ర reference image upload చేయండి. ఈ బటన్ ప్రతి సీన్‌ను "
+            "సీన్ Render Manifest బటన్ నొక్కగానే కథా JSON, reference image ఇక్కడ ఆటోమేటిక్‌గా వస్తాయి. తర్వాత ఈ బటన్ ప్రతి సీన్‌ను "
             "Wan2.2 TI2V-5Bతో render చేసి, సీన్లను కలిపి, తెలుగు dialogue "
             "soundtrack జోడించి Final MP4 ఇస్తుంది. "
             "దీనికి persistent CUDA GPU, model weights, సరైన environment paths అవసరం. "
