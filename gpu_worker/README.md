@@ -15,6 +15,8 @@ This is an isolated GPU-worker prototype. It is **not deployed and has not rende
 
 ## UI paths
 
+- **Gemini story planner:** turns a Telugu story into a validated JSON scene plan with visual prompts, camera notes, characters, Telugu dialogue and continuity notes. Requires `GEMINI_API_KEY` in Space Secrets; optionally set `GEMINI_MODEL`. It plans only and does not render scenes.
+
 - **Telugu voice:** creates a separate MP3 using the online Edge TTS service, with Telugu male (Mohan) and female (Shruti) voices.
 - **Character dialogue soundtrack:** accepts speaker-labelled Telugu lines (`Speaker|Voice|Dialogue`), synthesizes each line, inserts short pauses, and joins them into one WAV soundtrack using FFmpeg.
 - **Scene stitching:** normalizes 2–12 generated MP4 scenes to a common 24 FPS portrait/landscape/square canvas and joins them into one silent story MP4.
@@ -38,7 +40,7 @@ No model weights are downloaded automatically. Do not enable paid hardware or cr
 
 ## Known limitations
 
-- The current TI2V test is deliberately short (41 frames), not a full 10-second story.
+- The current TI2V test is deliberately short (41 frames, about 1.7 seconds at 24 FPS), not a full 10-second story. The Gemini planner can draft a multi-scene plan, but automatic multi-scene GPU rendering is not yet connected.
 - Wan2.2 TI2V/Animate models generate silent video; they do not create Telugu dialogue audio.
 - Telugu TTS can create separate MP3 lines and a combined WAV dialogue track; the separate mux tab can add the soundtrack to MP4. Accurate Telugu lip-sync and sound effects are not implemented. Basic scene stitching is implemented, but automatic scene selection, transition effects, and story continuity checks are not.
 - The source-video preflight tab does not itself render a video; use the dedicated generation tabs when model configuration is complete.
