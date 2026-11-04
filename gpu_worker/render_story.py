@@ -35,7 +35,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wan-repo", default=os.environ.get("WAN_REPO_PATH"), help="Wan2.2 repository path (or WAN_REPO_PATH)")
     parser.add_argument("--checkpoint", default=os.environ.get("WAN_TI2V_CHECKPOINT"), help="TI2V-5B checkpoint directory (or WAN_TI2V_CHECKPOINT)")
     parser.add_argument("--timeout", type=int, default=2700, help="Timeout in seconds per generated scene")
-    parser.add_argument("--keep-original-audio", action="store_true", help="Mix generated dialogue with the silent scene source audio if present")
     return parser
 
 
@@ -56,7 +55,6 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=args.output_dir,
             reference_image=args.reference,
             render_timeout_seconds=args.timeout,
-            keep_original_audio=args.keep_original_audio,
         )
     except (StoryRenderPipelineError, ValueError, OSError) as exc:
         print(f"Render failed: {exc}", file=sys.stderr)
