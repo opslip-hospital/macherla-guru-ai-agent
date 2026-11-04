@@ -18,6 +18,8 @@ This is an isolated GPU-worker prototype. It is **not deployed and has not rende
 - **Gemini story planner:** turns a Telugu story into a validated JSON scene plan with visual prompts, camera notes, characters, Telugu dialogue and continuity notes. Requires `GEMINI_API_KEY` in Space Secrets; optionally set `GEMINI_MODEL`. It plans only and does not render scenes.
 - **Scene render manifest:** converts the approved plan into per-scene Wan2.2 frame counts/prompts, a shared character-reference filename, and a validated Telugu dialogue script. It is a pre-render package only; it does not launch GPU inference.
 
+- **Sequential story render runner:** `story_render_runner.py` now connects a validated manifest to per-scene TI2V generation, scene stitching, Telugu dialogue synthesis, and final audio mux. It is a code path for a configured persistent GPU worker; it is not yet exposed as a one-click Space action or verified by real model inference. Each scene is rendered sequentially and needs the model/runtime to be installed.
+
 - **Telugu voice:** creates a separate MP3 using the online Edge TTS service, with Telugu male (Mohan) and female (Shruti) voices.
 - **Character dialogue soundtrack:** accepts speaker-labelled Telugu lines (`Speaker|Voice|Dialogue`), synthesizes each line, inserts short pauses, and joins them into one WAV soundtrack using FFmpeg.
 - **Scene stitching:** normalizes 2–12 generated MP4 scenes to a common 24 FPS portrait/landscape/square canvas and joins them into one silent story MP4.
@@ -41,7 +43,7 @@ No model weights are downloaded automatically. Do not enable paid hardware or cr
 
 ## Known limitations
 
-- The current TI2V test is deliberately short (41 frames, about 1.7 seconds at 24 FPS), not a full 10-second story. The Gemini planner can draft a multi-scene plan, and the scene render manifest prepares individual render jobs and the dialogue script. Automatic multi-scene GPU rendering is not yet connected.
+- The UI's current TI2V test is deliberately short (41 frames, about 1.7 seconds at 24 FPS), not a full 10-second story. A separate sequential runner now connects manifest jobs to generation, stitching and audio assembly for a persistent configured GPU runtime, but it has not been run against real model weights and is not yet exposed as a one-click Space action.
 - Wan2.2 TI2V/Animate models generate silent video; they do not create Telugu dialogue audio.
 - Telugu TTS can create separate MP3 lines and a combined WAV dialogue track; the separate mux tab can add the soundtrack to MP4. Accurate Telugu lip-sync and sound effects are not implemented. Basic scene stitching is implemented, but automatic scene selection, transition effects, and story continuity checks are not.
 - The source-video preflight tab does not itself render a video; use the dedicated generation tabs when model configuration is complete.
