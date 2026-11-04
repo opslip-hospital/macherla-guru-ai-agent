@@ -1,8 +1,4 @@
-"""Gradio UI for the isolated Macherla Guru GPU worker.
-
-The UI supports readiness checks and an opt-in Wan2.2 TI2V-5B render when
-model files are explicitly mounted/configured. It never downloads weights.
-"""
+"""Gradio UI for the isolated Macherla Guru GPU worker."""
 from __future__ import annotations
 
 import json
@@ -13,6 +9,7 @@ from pathlib import Path
 import gradio as gr
 import spaces
 
+from telugu_tts import TELUGU_VOICES, TeluguTTSSetupError, synthesize_telugu_speech
 from ti2v_adapter import TI2VSetupError, run_ti2v_job
 from wan_animate_adapter import WanSetupError, run_wan_animate_job
 
@@ -53,6 +50,27 @@ def prepare_job(video_path, reference_path, story_te, mode, aspect_ratio):
         "ఇన్‌పుట్ తనిఖీ విజయవంతం. ఇది ఇంకా వీడియో రెండర్ చేయలేదు. "
         "ఇది preflight తనిఖీ మాత్రమే; MP4 కోసం పై generation tabs ఉపయోగించండి."
     )
+
+
+def create_telugu_voice(dialogue, voice_label, rate_label):
+    output_dir = Path(tempfile.mkdtemp(prefix="macherla_telugu_voice_"))
+    output_file = output_dir / "telugu_dialogue.mp3"
+    rates = {
+        "నెమ్మదిగా": "-10%",
+        "సాధారణం": "+0%",
+        "వేగంగా": "+10%",
+    }
+    try:
+        result = synthesize_telugu_speech(
+            text=dialogue,
+            voice=voice_label,
+            output_file=str(output_file),
+            rate=rates.get(rate_label, "+0%"),
+            timeout_seconds=90,
+        )
+    except TeluguTTSSetupError as exc:
+        raise gr.Error(str(exc)) from exc
+    return str(result)
 
 
 @spaces.GPU(duration=120)
@@ -147,6 +165,29 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         "తెలుగు కథ ఆధారంగా కొత్త సన్నివేశం తయారు చేయడానికి ప్రయోగాత్మక వర్కర్. "
         "మోడల్ ఫైల్స్ సిద్ధంగా ఉన్నప్పుడు మాత్రమే నిజమైన MP4 render ప్రారంభమవుతుంది."
     )
+    with gr.Tab("తెలుగు వాయిస్"):
+        dialogue = gr.Textbox(
+            label="తెలుగు డైలాగ్",
+            lines=4,
+            placeholder="ఉదా: గిన్నెలు నీట్‌గా తోమలేదని చీపురుతో కొట్టిందిరా!",
+        )
+        voice = gr.Radio(
+            choices=list(TELUGU_VOICES.keys()),
+            value="Mohan (పురుష వాయిస్)",
+            label="వాయిస్",
+        )
+        speed = gr.Radio(
+            choices=["నెమ్మదిగా", "సాధారణం", "వేగంగా"],
+            value="సాధారణం",
+            label="మాట్లాడే వేగం",
+        )
+        voice_button = gr.Button("తెలుగు వాయిస్ తయారు చేయి", variant="primary")
+        voice_output = gr.Audio(label="తయారైన తెలుగు MP3", type="filepath")
+        voice_button.click(create_telugu_voice, [dialogue, voice, speed], voice_output)
+        gr.Markdown(
+            "గమనిక: ఇది ఆన్‌లైన్ TTS సేవ. MP3 మాత్రమే తయారవుతుంది; "
+            "వీడియోలో పెదవుల కదలికలకు సరిపోల్చడం ఇంకా కలపలేదు."
+        )
     with gr.Tab("కొత్త సన్నివేశం"):
         prompt = gr.Textbox(
             label="సన్నివేశం / డైలాగ్ సూచన (తెలుగులో)",
@@ -206,7 +247,7 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         "- కొత్త సన్నివేశాల కోసం Wan2.2 TI2V-5B runner కనెక్ట్ చేయబడింది; "
         "కానీ model weights / GPU ఇంకా configure చేయలేదు.\n"
         "- పాత వీడియోలో క్యారెక్టర్ animation/replacement tab ఉంది; కానీ WAN_ANIMATE_CHECKPOINT, GPU లేకుండా render జరగదు.\n"
-        "- తెలుగు voice generation, lip-sync, multi-scene stitching ఇంకా చేయాల్సి ఉంది.\n"
+        "- తెలుగు వాయిస్ MP3 తయారు చేయవచ్చు; lip-sync, multi-scene stitching, sound effects ఇంకా చేయాల్సి ఉంది.\n"
         "- మోడల్ weights ఆటోమేటిక్‌గా download కావు; paid hardware అనుమతి లేకుండా enable చేయరాదు."
     )
 
