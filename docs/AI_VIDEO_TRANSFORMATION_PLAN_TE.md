@@ -11,6 +11,7 @@ A prompt-driven Telugu workflow for Macherla Guru videos: upload a short raw vid
 - A separate Gradio worker prototype contains Wan2.2 TI2V-5B and Animate-14B command adapters, with model weights and GPU paths required through environment configuration.
 - Telugu TTS uses Edge TTS online voices (Mohan/Shruti); a speaker-labelled dialogue builder creates a WAV track with configurable pauses.
 - A separate FFmpeg mux adapter combines a rendered MP4 and the Telugu dialogue WAV/MP3, optionally mixing source-video audio. Unit tests cover command construction and validation.
+- A scene-stitch adapter normalizes 2–12 rendered MP4 clips to a common 24 FPS canvas (9:16, 16:9 or 1:1) and concatenates them into a single silent story MP4.
 
 ## Model fit and constraints
 
@@ -41,8 +42,9 @@ References:
 4. Add the text/image-to-video scene-generation stage for story-driven shots.
 5. Validate Telugu TTS audio quality for the user's two character voices.
 6. Evaluate MuseTalk on a short Telugu clip with the actual PJ Babu/Yamudu 3D CGI style; integrate only if language support, face detection, quality and all dependency licenses are acceptable.
-7. Mux dialogue audio into generated MP4 and validate a real output.
-8. Connect the Streamlit page to the worker using authenticated job submission and status polling.
+7. Stitch generated scenes into a continuous MP4 and validate a real output; transitions and story continuity remain future work.
+8. Mux dialogue audio into the stitched MP4 and validate a real output.
+9. Connect the Streamlit page to the worker using authenticated job submission and status polling.
 
 ## Safety and project boundaries
 - Keep the YouTube Manager app.py unchanged.
@@ -54,5 +56,6 @@ References:
 ## Current status — 2026-11-04
 - GitHub Actions syntax checks and unit tests pass on the prototype branch after the latest MP4 mux changes.
 - This verifies Python code and command-building tests only. It does not prove online TTS service availability, successful GPU model loading, actual video generation, or lip-sync quality.
-- No Hugging Face Space has been created or deployed; no GPU worker has been run; no real MP4 render has been produced.
+- Scene stitching code and a Gradio tab are now implemented, with unit tests for normalization commands; real FFmpeg stitching still needs a runtime video test.
+- No Hugging Face Space has been created or deployed; no GPU worker has been run; no real AI MP4 render has been produced.
 - The main YouTube Manager app.py on main remains unchanged. Do not merge this prototype into main without the user's explicit approval.
