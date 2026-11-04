@@ -64,7 +64,7 @@ def render_comedy_edit(
         raise ComedyEditError("Subtitle SRT file is missing or empty.")
     video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times)
     if subtitle_file:
-        escaped = str(Path(subtitle_file).resolve()).replace("\\\\", "/").replace(":", "\\\\:").replace("'", "\\\\'")
+        escaped = str(Path(subtitle_file).resolve()).replace("\\\\", "/").replace(":", r"\:").replace("'", r"\'")
         video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
