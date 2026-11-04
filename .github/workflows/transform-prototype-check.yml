@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: "3.11"
       - name: Check Python syntax
-        run: python -m py_compile pages/3_AI_Video_Transformation.py gpu_worker/story_plan.py gpu_worker/gradio_app.py gpu_worker/app.py gpu_worker/wan_animate_adapter.py gpu_worker/ti2v_adapter.py tests/test_story_plan.py tests/test_wan_animate_adapter.py tests/test_ti2v_adapter.py
-      - name: Run story planner tests
+        run: python -m py_compile pages/3_AI_Video_Transformation.py gpu_worker/story_plan.py gpu_worker/gradio_app.py gpu_worker/app.py gpu_worker/wan_animate_adapter.py gpu_worker/ti2v_adapter.py gpu_worker/telugu_tts.py tests/test_story_plan.py tests/test_wan_animate_adapter.py tests/test_ti2v_adapter.py tests/test_telugu_tts.py
+      - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Check ZIP and hashing standard library imports
         run: python -c "import hashlib, io, json, re, uuid, zipfile"
