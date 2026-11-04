@@ -84,7 +84,7 @@ def stitch_scene_videos(
 
         concat_file = work / "scenes.txt"
         concat_file.write_text(
-            "".join("file '" + str(path).replace("'", "'\\''") + "'\\n" for path in normalized),
+            "\\n".join(f"file '{path}'" for path in normalized) + "\\n",
             encoding="utf-8",
         )
         try:
