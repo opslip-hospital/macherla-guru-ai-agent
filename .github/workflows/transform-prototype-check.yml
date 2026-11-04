@@ -5,7 +5,9 @@ on:
     branches: [ai-video-transform-prototype]
     paths:
       - "pages/3_AI_Video_Transformation.py"
+      - "pages/4_PJ_Babu_Comedy_Auto_Editor.py"
       - "gpu_worker/**"
+      - "pages/4_PJ_Babu_Comedy_Auto_Editor.py"
       - "tests/**"
       - ".github/workflows/transform-prototype-check.yml"
   workflow_dispatch:
