@@ -108,4 +108,39 @@ jobs:
               assert points == [0.25, 1.2]
               assert "నమస్కారం మావా" in transcript_srt.read_text(encoding="utf-8")
               print("PASS Whisper transcript, subtitle timing, and speech punch-point export")
+              # Mock the Gemini Files upload + video understanding API without a paid API call.
+              from gpu_worker import gemini_director
+              class FakeResponse:
+                  def __init__(self, payload=None, headers=None):
+                      self.payload, self.headers = payload or {}, headers or {}
+                  def raise_for_status(self):
+                      pass
+                  def json(self):
+                      return self.payload
+              calls = []
+              def fake_post(url, **kwargs):
+                  calls.append((url, kwargs))
+                  if url.endswith("/upload/v1beta/files"):
+                      return FakeResponse(headers={"X-Goog-Upload-URL": "https://upload.test/session"})
+                  if url == "https://upload.test/session":
+                      return FakeResponse({"file": {"name": "files/test", "uri": "https://files.test/video", "state": "ACTIVE"}})
+                  if url.endswith("/models/gemini-3.8-flash:generateContent"):
+                      return FakeResponse({"candidates": [{"content": {"parts": [{"text": json.dumps({
+                          "summary": "Telugu comedy clip",
+                          "moments": [{"time": 1.25, "kind": "comedy", "reason": "Punchline"}]
+                      })}]}}]})
+                  raise AssertionError("Unexpected Gemini URL: " + url)
+              original_post = gemini_director.requests.post
+              gemini_director.requests.post = fake_post
+              try:
+                  gemini_video = root / "gemini-test.mp4"
+                  gemini_video.write_bytes(b"mock video bytes")
+                  analysis = gemini_director.analyze_video_with_gemini(str(gemini_video), "fake-key")
+                  assert analysis["summary"] == "Telugu comedy clip"
+                  assert analysis["moments"][0]["time"] == 1.25
+                  assert any("/models/gemini-3.8-flash:generateContent" in call[0] for call in calls)
+                  print("PASS mocked Gemini Files upload and Gemini 3.8 Flash video analysis")
+              finally:
+                  gemini_director.requests.post = original_post
+
           PY
