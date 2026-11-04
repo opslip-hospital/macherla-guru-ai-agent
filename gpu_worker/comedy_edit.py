@@ -48,6 +48,19 @@ def _ffmpeg_path() -> str:
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
+def _probe_duration(path: Path) -> float:
+    """Read source duration from FFmpeg metadata for correctly timed end fades."""
+    probe = subprocess.run(
+        [_ffmpeg_path(), "-hide_banner", "-i", str(path)],
+        capture_output=True, text=True, timeout=30,
+    )
+    match = re.search(r"Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)", probe.stderr or "")
+    if not match:
+        raise ComedyEditError("Could not read the input video's duration.")
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
 def render_comedy_edit(
     input_video: str,
     output_video: str,
@@ -75,8 +88,12 @@ def render_comedy_edit(
         raise ComedyEditError("Background music file is missing or empty.")
     if subtitle_file and (not Path(subtitle_file).is_file() or Path(subtitle_file).stat().st_size == 0):
         raise ComedyEditError("Subtitle SRT file is missing or empty.")
+    source_duration = _probe_duration(source)
+    output_duration = min(float(max_duration), source_duration / float(playback_speed))
+    fade_out_start = max(0.0, output_duration - 0.35)
+    audio_fade_out_start = max(0.0, output_duration - 0.25)
     video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times)
-    video_filter += f",setpts=PTS/{float(playback_speed):.3f},fade=t=in:st=0:d=0.25,fade=t=out:st={max(0.0, float(max_duration)-0.35):.3f}:d=0.35"
+    video_filter += f",setpts=PTS/{float(playback_speed):.3f},fade=t=in:st=0:d=0.25,fade=t=out:st={fade_out_start:.3f}:d=0.35"
     if subtitle_file:
         escaped = str(Path(subtitle_file).resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
         video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
@@ -88,18 +105,18 @@ def render_comedy_edit(
         if has_original_audio:
             graph = (
                 f"[0:v]{video_filter}[v];"
-                f"[0:a]atempo={float(playback_speed):.3f},volume=0.88,afade=t=in:st=0:d=0.15,afade=t=out:st={max(0.0, float(max_duration)-0.25):.3f}:d=0.25[original];"
+                f"[0:a]atempo={float(playback_speed):.3f},volume=0.88,afade=t=in:st=0:d=0.15,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[original];"
                 f"[1:a]atempo={float(playback_speed):.3f},volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[music];"
                 "[original][music]amix=inputs=2:duration=first:dropout_transition=1[a]"
             )
         else:
             graph = (
                 f"[0:v]{video_filter}[v];"
-                f"[1:a]atempo={float(playback_speed):.3f},volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[a]"
+                f"[1:a]atempo={float(playback_speed):.3f},volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[a]"
             )
         cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
     else:
-        cmd += ["-vf", video_filter, "-map", "0:v:0", "-map", "0:a?", "-af", f"atempo={float(playback_speed):.3f},afade=t=in:st=0:d=0.15,afade=t=out:st={max(0.0, float(max_duration)-0.25):.3f}:d=0.25"]
+        cmd += ["-vf", video_filter, "-map", "0:v:0", "-map", "0:a?", "-af", f"atempo={float(playback_speed):.3f},afade=t=in:st=0:d=0.15,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25"]
     cmd += [
         "-t", str(float(max_duration)), "-c:v", "libx264", "-preset", "veryfast",
         "-crf", "19", "-r", "30", "-c:a", "aac", "-b:a", "192k",
