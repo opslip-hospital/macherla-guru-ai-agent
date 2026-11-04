@@ -16,6 +16,7 @@ from scene_stitch import SceneStitchError, stitch_scene_videos
 from ti2v_adapter import TI2VSetupError, run_ti2v_job
 from wan_animate_adapter import WanSetupError, run_wan_animate_job
 from gemini_story_planner import GeminiPlannerError, generate_story_plan
+from story_render_pipeline import StoryRenderPlanError, manifest_json
 
 
 def _file_info(path: str | None, label: str) -> dict:
@@ -69,6 +70,22 @@ def plan_telugu_story(story_te, character_name, aspect_ratio, visual_style, dura
     except (GeminiPlannerError, ValueError) as exc:
         raise gr.Error(str(exc)) from exc
     return json.dumps(plan, ensure_ascii=False, indent=2)
+
+
+
+def prepare_story_render_manifest(plan_json, reference_path, default_voice):
+    try:
+        plan = json.loads(plan_json or "")
+        reference_name = Path(reference_path).name if reference_path else None
+        return manifest_json(
+            plan,
+            reference_image_name=reference_name,
+            default_voice=default_voice,
+        )
+    except json.JSONDecodeError as exc:
+        raise gr.Error("ముందుగా AI కథా ప్లానర్ ఇచ్చిన సరైన JSON ఇక్కడ paste చేయండి.") from exc
+    except (StoryRenderPlanError, TypeError, ValueError) as exc:
+        raise gr.Error(str(exc)) from exc
 
 
 def create_telugu_voice(dialogue, voice_label, rate_label):
@@ -272,6 +289,28 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         gr.Markdown(
             "ఈ tab కోసం Hugging Face Space Secretsలో GEMINI_API_KEY అవసరం. "
             "ఐచ్చికంగా GEMINI_MODEL ఇవ్వవచ్చు. API keyని కోడ్‌లో పెట్టవద్దు."
+        )
+
+
+    with gr.Tab("సీన్ Render ప్లాన్"):
+        gr.Markdown(
+            "AI కథా ప్లానర్ ఇచ్చిన JSONను ఇక్కడ paste చేయండి. ఇది ప్రతి సీన్‌కు "
+            "Wan2.2 frame count, visual prompt, common reference image, తెలుగు "
+            "డైలాగ్ soundtrack script సిద్ధం చేస్తుంది. ఇది render చేయదు."
+        )
+        render_plan_input = gr.Code(label="Gemini story plan JSON", language="json")
+        render_reference = gr.Image(label="అన్ని సీన్లకు common character reference (ఐచ్చికం)", type="filepath")
+        render_voice = gr.Radio(
+            choices=list(TELUGU_VOICES.keys()),
+            value="Mohan (పురుష వాయిస్)",
+            label="డిఫాల్ట్ డైలాగ్ వాయిస్",
+        )
+        render_manifest_button = gr.Button("సీన్ Render Manifest తయారు చేయి", variant="primary")
+        render_manifest_output = gr.Code(label="Render job manifest (ఇంకా render కాలేదు)", language="json")
+        render_manifest_button.click(
+            prepare_story_render_manifest,
+            inputs=[render_plan_input, render_reference, render_voice],
+            outputs=render_manifest_output,
         )
 
     with gr.Tab("తెలుగు వాయిస్"):
