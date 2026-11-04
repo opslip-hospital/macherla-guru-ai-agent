@@ -75,6 +75,45 @@ def create_telugu_voice(dialogue, voice_label, rate_label):
     return str(result)
 
 
+def create_dialogue_soundtrack(script, gap_label, rate_label):
+    gaps = {"వెంటనే": 0, "చిన్న విరామం": 450, "కొంచెం ఎక్కువ": 900}
+    rates = {"నెమ్మదిగా": "-10%", "సాధారణం": "+0%", "వేగంగా": "+10%"}
+    output_dir = Path(tempfile.mkdtemp(prefix="macherla_dialogue_track_"))
+    output_file = output_dir / "telugu_dialogue_track.wav"
+    try:
+        result = build_dialogue_soundtrack(
+            script=script,
+            output_file=str(output_file),
+            gap_ms=gaps.get(gap_label, 450),
+            rate=rates.get(rate_label, "+0%"),
+        )
+    except DialogueAudioError as exc:
+        raise gr.Error(str(exc)) from exc
+    return str(result)
+
+
+def combine_video_and_dialogue(video_path, audio_path, keep_original, original_volume, dialogue_volume):
+    if not video_path:
+        raise gr.Error("రెండర్ చేసిన MP4 వీడియో ఇవ్వండి.")
+    if not audio_path:
+        raise gr.Error("తెలుగు dialogue WAV/MP3 ఇవ్వండి.")
+    output_dir = Path(tempfile.mkdtemp(prefix="macherla_final_video_"))
+    output_file = output_dir / "macherla_guru_final.mp4"
+    try:
+        result = mux_dialogue_into_video(
+            video_file=video_path,
+            audio_file=audio_path,
+            output_file=str(output_file),
+            keep_original_audio=bool(keep_original),
+            original_volume=float(original_volume),
+            dialogue_volume=float(dialogue_volume),
+            timeout_seconds=180,
+        )
+    except VideoMuxError as exc:
+        raise gr.Error(str(exc)) from exc
+    return str(result)
+
+
 @spaces.GPU(duration=120)
 def generate_new_scene(prompt_te, aspect_ratio, reference_path):
     """Render a short new shot only when an operator has mounted the weights."""
