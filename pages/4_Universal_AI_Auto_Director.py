@@ -93,6 +93,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 plan["face_tracking_detected"] = bool(face_track_points)
                 plan["gemini_story_summary"] = gemini_result.get("summary", "")
                 plan["gemini_director_moments"] = gemini_result.get("moments", [])
+                plan["speech_transcript"] = transcript_segments
                 plan["note"] += " Speech phrase starts can also guide punch zoom timing when Whisper subtitles are enabled."
                 gemini_times = [float(item["time"]) for item in gemini_result.get("moments", [])]
                 punch_times = sorted({round(float(x), 3) for x in cuts + speech_points + gemini_times if 0.15 < float(x) < float(duration)})
@@ -104,6 +105,10 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 st.info("Gemini story understanding: " + gemini_result["summary"])
                 for moment in gemini_result.get("moments", []):
                     st.write("{:.2f}s — {}: {}".format(moment["time"], moment["kind"], moment["reason"]))
+            if transcript_segments:
+                with st.expander("🗣️ గుర్తించిన మాటలు / Speech transcript", expanded=True):
+                    for segment in transcript_segments:
+                        st.write("{:.2f}s–{:.2f}s: {}".format(segment["start"], segment["end"], segment["text"]))
             if cuts:
                 st.write("Dynamic punch points: " + ", ".join(f"{x:.2f}s" for x in cuts))
             else:
@@ -146,9 +151,10 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
 
 st.divider()
 st.markdown(
-    "**ఈ వెర్షన్‌లో:** visual scene-change detection, scene-aware punch zooms, "
-    "9:16/16:9/1:1 reframing, contrast/saturation/sharpen polish, original dialogue preservation, "
-    "optional low-volume background music, adjustable 0.85x–1.15x speed, smooth fade-in/fade-out, optional SRT subtitle burn-in, final MP4 + edit-plan export. "
-    "ఇంకా పూర్తి కాలేనివి: Telugu speech understanding, automatic subtitle timing (Whisper option added), face tracking, "
-    "per-word sound effects, AI lip-sync, new scene generation."
+    "**ఈ వెర్షన్‌లో:** visual scene-change detection, smooth scene-aware punch zooms, "
+    "9:16/16:9/1:1 reframing, experimental face-aware crop tracking, contrast/saturation/sharpen polish, original dialogue preservation, "
+    "optional low-volume background music, adjustable 0.85x–1.15x speed, smooth fade-in/fade-out, optional SRT subtitles, "
+    "Whisper multilingual speech-to-text with transcript and phrase-timed punch points, optional Gemini video/story/dialogue moment analysis, final MP4 + JSON edit-plan export. "
+    "**ఇంకా అందుబాటులో లేనివి:** automatic reaction-shot insertion, per-word sound effects, AI lip-sync generation, and new-scene generation. "
+    "Gemini and face tracking require real-video testing; face detection can miss stylized/cartoon characters."
 )
