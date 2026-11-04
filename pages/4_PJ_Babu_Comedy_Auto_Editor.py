@@ -29,7 +29,7 @@ st.caption(
     "recognize faces, or create reaction shots. Telugu captions can be made in the existing AI Video Editor."
 )
 
-if st.button("🔥 Auto Director + Comedy Edit", type="primary", disabled=video is None, use_container_width=True):
+if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video is None, use_container_width=True):
     with tempfile.TemporaryDirectory(prefix="universal_auto_director_") as temp:
         root = Path(temp)
         source = root / ("source" + (Path(video.name).suffix.lower() or ".mp4"))
@@ -81,7 +81,7 @@ st.divider()
 st.markdown(
     "**ఈ వెర్షన్‌లో:** visual scene-change detection, scene-aware punch zooms, "
     "9:16/16:9/1:1 reframing, contrast/saturation/sharpen polish, original dialogue preservation, "
-    "optional low-volume background music, optional SRT subtitle burn-in, final MP4 + edit-plan export. "
+    "optional low-volume background music, optional SRT subtitle burn-in (any language supported by the installed FFmpeg fonts), final MP4 + edit-plan export. "
     "ఇంకా పూర్తి కాలేనివి: Telugu speech understanding, automatic subtitle timing, face tracking, "
     "reaction-shot insertion, per-word sound effects, AI lip-sync, new scene generation."
 )
