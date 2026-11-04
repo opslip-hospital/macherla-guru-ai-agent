@@ -4,6 +4,7 @@ This is an edit-only pipeline: it never invents characters or replaces story con
 """
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -59,13 +60,21 @@ def render_comedy_edit(
     video_filter = build_comedy_filter(aspect_ratio, intensity)
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
+        probe = subprocess.run([_ffmpeg_path(), "-hide_banner", "-i", str(source)], capture_output=True, text=True, timeout=30)
+        has_original_audio = bool(re.search(r"Stream #\\d+:\\d+.*Audio:", probe.stderr or ""))
         cmd += ["-stream_loop", "-1", "-i", str(music_file)]
-        graph = (
-            f"[0:v]{video_filter}[v];"
-            f"[0:a]volume=0.88[original];"
-            f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[music];"
-            "[original][music]amix=inputs=2:duration=first:dropout_transition=1[a]"
-        )
+        if has_original_audio:
+            graph = (
+                f"[0:v]{video_filter}[v];"
+                f"[0:a]volume=0.88[original];"
+                f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[music];"
+                "[original][music]amix=inputs=2:duration=first:dropout_transition=1[a]"
+            )
+        else:
+            graph = (
+                f"[0:v]{video_filter}[v];"
+                f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[a]"
+            )
         cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
     else:
         cmd += ["-vf", video_filter, "-map", "0:v:0", "-map", "0:a?"]
