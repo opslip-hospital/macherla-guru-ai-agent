@@ -50,6 +50,6 @@ def make_comedy_edit_decision(cuts: list[float], *, duration: float) -> dict:
         "duration_seconds": float(duration),
         "scene_changes": valid,
         "punch_moments": moments,
-        "editing_style": "fast_comedy",
-        "note": "Scene-change detection is a visual heuristic; it does not understand dialogue or identify characters.",
+        "editing_style": "dynamic_punch_edit",
+        "note": "Scene-change detection is a visual heuristic; it does not analyze dialogue meaning, character identity, or story context.",
     }
