@@ -57,14 +57,21 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
             subtitle_path = root / "captions.srt"
             subtitle_path.write_bytes(subtitle.getvalue())
         output = root / "universal_edited_final.mp4"
+        speech_points_path = root / "speech_punch_points.json"
+        speech_points = []
         try:
             if auto_subtitles and subtitle is None:
                 language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
                 with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):
-                    subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model))
+                    subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model, punch_points_path=str(speech_points_path)))
+                if speech_points_path.is_file():
+                    speech_points = json.loads(speech_points_path.read_text(encoding="utf-8"))
             with st.spinner("1/3 వీడియో సీన్లను విశ్లేషిస్తున్నాం…"):
                 cuts = detect_scene_changes(str(source), threshold=threshold, max_duration=duration)
                 plan = make_comedy_edit_decision(cuts, duration=duration)
+                plan["speech_punch_points"] = speech_points
+                plan["note"] += " Speech phrase starts can also guide punch zoom timing when Whisper subtitles are enabled."
+                punch_times = sorted({round(float(x), 3) for x in cuts + speech_points if 0.15 < float(x) < float(duration)})
             st.subheader("🎬 Auto Director Edit Plan")
             st.write(f"గుర్తించిన visual scene changes: {len(cuts)}")
             if cuts:
@@ -81,7 +88,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 rendered = render_comedy_edit(
                     str(source), str(output), aspect_ratio=ratio_value, intensity=intensity,
                     music_file=str(music_path) if music_path else None,
-                    music_volume=music_volume, max_duration=duration, punch_times=cuts,
+                    music_volume=music_volume, max_duration=duration, punch_times=punch_times,
                     subtitle_file=str(subtitle_path) if subtitle_path else None,
                     playback_speed=playback_speed,
                 )
