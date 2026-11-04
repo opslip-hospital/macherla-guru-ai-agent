@@ -22,7 +22,7 @@ jobs:
       - name: Install editor dependencies
         run: python -m pip install --upgrade pip imageio-ffmpeg "opencv-python-headless>=4.10,<4.12"
       - name: Compile editor modules
-        run: python -m py_compile gpu_worker/comedy_edit.py gpu_worker/auto_director.py gpu_worker/auto_subtitles.py
+        run: python -m py_compile gpu_worker/comedy_edit.py gpu_worker/auto_director.py gpu_worker/auto_subtitles.py pages/4_Universal_AI_Auto_Director.py
       - name: Render real synthetic MP4s and verify audio, silent input, music, subtitles, and speed
         run: |
           python - <<'PY'
