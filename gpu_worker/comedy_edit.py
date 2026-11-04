@@ -61,6 +61,28 @@ def _probe_duration(path: Path) -> float:
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
+def _retime_srt(path: Path, speed: float) -> Path:
+    """Retiming captions keeps subtitle sync when the video speed changes."""
+    if abs(speed - 1.0) < 0.001:
+        return path
+    content = path.read_text(encoding="utf-8-sig")
+    pattern = re.compile(r"(\d{2}:\d{2}:\d{2},\d{3})")
+
+    def convert(match: re.Match[str]) -> str:
+        hours, minutes, seconds_ms = match.group(1).split(":")
+        seconds, milliseconds = seconds_ms.split(",")
+        total_ms = int((int(hours) * 3600 + int(minutes) * 60 + int(seconds)) * 1000 + int(milliseconds))
+        adjusted = max(0, round(total_ms / speed))
+        h, remainder = divmod(adjusted, 3_600_000)
+        m, remainder = divmod(remainder, 60_000)
+        s, ms = divmod(remainder, 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    target = path.with_name(path.stem + "_retimed.srt")
+    target.write_text(pattern.sub(convert, content), encoding="utf-8")
+    return target
+
+
 def render_comedy_edit(
     input_video: str,
     output_video: str,
@@ -95,7 +117,8 @@ def render_comedy_edit(
     video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times)
     video_filter += f",setpts=PTS/{float(playback_speed):.3f},fade=t=in:st=0:d=0.25,fade=t=out:st={fade_out_start:.3f}:d=0.35"
     if subtitle_file:
-        escaped = str(Path(subtitle_file).resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+        subtitle_path = _retime_srt(Path(subtitle_file), float(playback_speed))
+        escaped = str(subtitle_path.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
         video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
@@ -106,13 +129,13 @@ def render_comedy_edit(
             graph = (
                 f"[0:v]{video_filter}[v];"
                 f"[0:a]atempo={float(playback_speed):.3f},volume=0.88,afade=t=in:st=0:d=0.15,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[original];"
-                f"[1:a]atempo={float(playback_speed):.3f},volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[music];"
+                f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[music];"
                 "[original][music]amix=inputs=2:duration=first:dropout_transition=1[a]"
             )
         else:
             graph = (
                 f"[0:v]{video_filter}[v];"
-                f"[1:a]atempo={float(playback_speed):.3f},volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[a]"
+                f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[a]"
             )
         cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
     else:
