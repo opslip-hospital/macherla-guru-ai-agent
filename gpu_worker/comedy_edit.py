@@ -13,7 +13,7 @@ class ComedyEditError(ValueError):
     pass
 
 
-def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High") -> str:
+def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", punch_times: list[float] | None = None) -> str:
     sizes = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (720, 720)}
     if aspect_ratio not in sizes:
         raise ComedyEditError("Aspect ratio must be 9:16, 16:9, or 1:1.")
@@ -21,7 +21,8 @@ def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High") -> 
         raise ComedyEditError("Intensity must be Medium, High, or Extreme.")
     width, height = sizes[aspect_ratio]
     zoom = {"Medium": "1.07", "High": "1.12", "Extreme": "1.18"}[intensity]
-    z_expr = f"if(lt(mod(on,45),5),{zoom},1.0)"
+    conditions = [f"between(on,{max(0, int(float(t) * 30))},{max(0, int(float(t) * 30) + 6)})" for t in (punch_times or [])[:20]]
+    z_expr = f"if({chr(44).join(conditions)},{zoom},if(lt(mod(on,45),5),{zoom},1.0))" if conditions else f"if(lt(mod(on,45),5),{zoom},1.0)"
     return (
         f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
         f"crop={width}:{height},setsar=1,"
@@ -47,6 +48,7 @@ def render_comedy_edit(
     music_volume: float = 0.12,
     max_duration: float = 20.0,
     timeout_seconds: int = 900,
+    punch_times: list[float] | None = None,
 ) -> str:
     source, output = Path(input_video), Path(output_video)
     if not source.is_file() or source.stat().st_size == 0:
@@ -57,7 +59,7 @@ def render_comedy_edit(
         raise ComedyEditError("Background music volume must be between 0 and 0.35.")
     if music_file and (not Path(music_file).is_file() or Path(music_file).stat().st_size == 0):
         raise ComedyEditError("Background music file is missing or empty.")
-    video_filter = build_comedy_filter(aspect_ratio, intensity)
+    video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times)
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
         probe = subprocess.run([_ffmpeg_path(), "-hide_banner", "-i", str(source)], capture_output=True, text=True, timeout=30)
