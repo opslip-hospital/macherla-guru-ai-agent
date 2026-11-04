@@ -137,6 +137,11 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 st.write("Dynamic punch points: " + ", ".join(f"{x:.2f}s" for x in cuts))
             else:
                 st.write("స్పష్టమైన scene cuts గుర్తించలేదు; regular dynamic zoom rhythm వాడతాం.")
+            with st.expander("🎯 Combined Director Cue Timeline", expanded=False):
+                for cue in plan["combined_director_cues"]:
+                    st.write("{:.2f}s — {} ({})".format(cue["time"], cue["action"], ", ".join(cue["sources"])))
+            if sfx is not None:
+                st.caption("Uploaded sound effect will be placed at up to 8 detected director punch cues; timing follows the selected playback speed.")
             st.success("సినిమాటిక్ ఎడిటింగ్ ప్లాన్ సిద్ధమైంది — వివరాలు కింద ఉన్నాయి.")
             st.write(f"• Zoom style: Fast + Smooth ({intensity})")
             st.write("• Colour polish: Contrast, saturation, sharpening")
