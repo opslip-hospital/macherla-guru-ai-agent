@@ -61,7 +61,10 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 st.write("Dynamic punch points: " + ", ".join(f"{x:.2f}s" for x in cuts))
             else:
                 st.write("స్పష్టమైన scene cuts గుర్తించలేదు; regular dynamic zoom rhythm వాడతాం.")
-            st.json(plan)
+            st.success("సినిమాటిక్ ఎడిటింగ్ ప్లాన్ సిద్ధమైంది — వివరాలు కింద ఉన్నాయి.")
+            st.write(f"• Zoom style: Fast + Smooth ({intensity})")
+            st.write("• Colour polish: Contrast, saturation, sharpening")
+            st.write("• Original dialogue: అలాగే ఉంచబడుతుంది")
             with st.spinner("2/3 Reframing, dynamic zooms, colour polish, audio mix…"):
                 rendered = render_comedy_edit(
                     str(source), str(output), aspect_ratio=ratio_value, intensity=intensity,
