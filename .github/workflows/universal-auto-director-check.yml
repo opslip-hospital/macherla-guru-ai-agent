@@ -31,7 +31,7 @@ jobs:
           from pathlib import Path
           import imageio_ffmpeg
           from gpu_worker.comedy_edit import render_comedy_edit
-          from gpu_worker.auto_director import detect_scene_changes, make_comedy_edit_decision
+          from gpu_worker.auto_director import detect_scene_changes, detect_face_tracking, make_comedy_edit_decision
 
           ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
           with tempfile.TemporaryDirectory() as temp:
@@ -53,7 +53,7 @@ jobs:
                    "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(voiced)])
               run([ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=3",
                    "-c:a", "aac", str(music)])
-              cuts = detect_scene_changes(str(voiced), threshold=0.1, max_duration=3)
+              face_points = detect_face_tracking(str(voiced), aspect_ratio="9:16", max_duration=3)\n              assert isinstance(face_points, list)\n              print(f"PASS face tracking sampling: {len(face_points)} face anchors")\n              cuts = detect_scene_changes(str(voiced), threshold=0.1, max_duration=3)
               plan = make_comedy_edit_decision(cuts, duration=3)
               assert plan["duration_seconds"] == 3.0 and isinstance(plan["punch_moments"], list)
               print(f"PASS scene analysis and edit plan: {len(cuts)} visual changes")
@@ -61,7 +61,7 @@ jobs:
 
               cases = [
                   ("silent-no-music", silent, {}),
-                  ("voiced-no-music-fast", voiced, {"playback_speed": 1.15}),
+                  ("voiced-no-music-fast", voiced, {"playback_speed": 1.15, "face_track_points": [{"time": 0.0, "x": 0.35, "y": 0.5}, {"time": 1.0, "x": 0.65, "y": 0.5}]}),
                   ("voiced-music-srt-slow", voiced, {"music_file": str(music), "subtitle_file": str(srt), "playback_speed": 0.85}),
                   ("silent-with-music", silent, {"music_file": str(music)}),
               ]
