@@ -40,8 +40,7 @@ subtitle_language = st.selectbox("Speech language", ["Auto detect", "Telugu", "E
 whisper_model = st.selectbox("Whisper model (CPU)", ["tiny", "base", "small"], index=0)
 music_volume = st.slider("Background music volume", 0.0, 0.35, 0.12, 0.01)
 st.caption(
-    "Scene analysis detects visual changes only; it does not understand Telugu dialogue, "
-    "recognize faces, or create reaction shots. Whisper ద్వారా optional auto subtitles కూడా తయారు చేయవచ్చు; మొదటిసారి model download అవసరం."
+    "Visual scene analysis is separate from dialogue meaning. Optional face-aware crop tracking and Whisper speech-to-text are available; reaction shots are not generated."
 )
 
 if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video is None, use_container_width=True):
