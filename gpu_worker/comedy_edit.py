@@ -64,7 +64,7 @@ def render_comedy_edit(
         raise ComedyEditError("Subtitle SRT file is missing or empty.")
     video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times)
     if subtitle_file:
-        escaped = str(Path(subtitle_file).resolve()).replace("\\\\", "/").replace(":", r"\:").replace("'", r"\'")
+        escaped = str(Path(subtitle_file).resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
         video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
@@ -97,7 +97,7 @@ def render_comedy_edit(
         raise ComedyEditError("Render took too long. Try a shorter clip.") from exc
     if result.returncode != 0 or not output.is_file() or output.stat().st_size < 1024:
         detail = (result.stderr or result.stdout or "FFmpeg failed")[-1800:]
-        raise ComedyEditError("Comedy edit failed: " + detail)
+        raise ComedyEditError("Video edit failed: " + detail)
     with output.open("rb") as handle:
         if handle.read(12)[4:8] != b"ftyp":
             raise ComedyEditError("Output is not a valid MP4 file.")
