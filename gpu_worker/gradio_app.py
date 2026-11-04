@@ -51,7 +51,7 @@ def prepare_job(video_path, reference_path, story_te, mode, aspect_ratio):
     }
     return json.dumps(manifest, ensure_ascii=False, indent=2), (
         "ఇన్‌పుట్ తనిఖీ విజయవంతం. ఇది ఇంకా వీడియో రెండర్ చేయలేదు. "
-        "క్యారెక్టర్ animation/replacement pipeline ఇంకా UIకి కనెక్ట్ కాలేదు."
+        "ఇది preflight తనిఖీ మాత్రమే; MP4 కోసం పై generation tabs ఉపయోగించండి."
     )
 
 
