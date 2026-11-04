@@ -77,7 +77,11 @@ def detect_face_tracking(video_path: str, *, aspect_ratio: str = "9:16", max_dur
         ow, oh = sizes[aspect_ratio]
         scale = max(ow / max(1, sw), oh / max(1, sh))
         vw, vh = ow / (sw * scale), oh / (sh * scale)
-        detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        cascade_type = getattr(cv2, "CascadeClassifier", None)
+        if cascade_type is None:
+            # Some minimal OpenCV wheels omit the legacy Haar API; safely fall back to center framing.
+            return []
+        detector = cascade_type(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         if detector.empty():
             raise ComedyEditError("OpenCV face detector model could not be loaded.")
         points, smooth_x, smooth_y = [], None, None
