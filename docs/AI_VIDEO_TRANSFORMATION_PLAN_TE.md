@@ -56,6 +56,6 @@ References:
 ## Current status — 2026-11-04
 - GitHub Actions syntax checks and unit tests pass on the prototype branch after the latest MP4 mux changes.
 - This verifies Python code and command-building tests only. It does not prove online TTS service availability, successful GPU model loading, actual video generation, or lip-sync quality.
-- Scene stitching code and a Gradio tab are now implemented, with unit tests for normalization commands; real FFmpeg stitching still needs a runtime video test.
+- Scene stitching code and a Gradio tab are implemented. In addition to unit tests, an actual local FFmpeg smoke test stitched two synthetic clips with different source dimensions into a 720×1280, 24 FPS, 2-second MP4, then muxed a WAV soundtrack; ffprobe confirmed both video and audio streams. This validates the FFmpeg processing path, not the AI model generation path.
 - No Hugging Face Space has been created or deployed; no GPU worker has been run; no real AI MP4 render has been produced.
 - The main YouTube Manager app.py on main remains unchanged. Do not merge this prototype into main without the user's explicit approval.
