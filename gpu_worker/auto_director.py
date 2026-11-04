@@ -27,7 +27,7 @@ def detect_scene_changes(video_path: str, *, threshold: float = 0.28, max_durati
         raise ComedyEditError("Scene analysis timed out. Try a shorter video.") from exc
     output = (result.stderr or "") + "\n" + (result.stdout or "")
     found = []
-    for match in re.finditer(r"pts_time:([0-9]+(?:\\.[0-9]+)?)", output):
+    for match in re.finditer(r"pts_time:([0-9]+(?:\.[0-9]+)?)", output):
         value = float(match.group(1))
         if 0.15 < value < float(max_duration) and (not found or value - found[-1] >= 0.35):
             found.append(round(value, 3))
