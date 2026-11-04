@@ -53,3 +53,54 @@ def make_comedy_edit_decision(cuts: list[float], *, duration: float) -> dict:
         "editing_style": "dynamic_punch_edit",
         "note": "Scene-change detection is a visual heuristic; it does not analyze dialogue meaning, character identity, or story context.",
     }
+
+
+def detect_face_tracking(video_path: str, *, aspect_ratio: str = "9:16", max_duration: float = 20.0, sample_interval: float = 0.25) -> list[dict]:
+    """Sample face locations and return smoothed normalized crop anchors."""
+    source = Path(video_path)
+    if not source.is_file() or source.stat().st_size == 0:
+        raise ComedyEditError("Video is missing for face tracking.")
+    sizes = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (720, 720)}
+    if aspect_ratio not in sizes:
+        raise ComedyEditError("Unsupported aspect ratio for face tracking.")
+    try:
+        import cv2
+    except ImportError as exc:
+        raise ComedyEditError("Face tracking requires opencv-python-headless.") from exc
+    cap = cv2.VideoCapture(str(source))
+    if not cap.isOpened():
+        raise ComedyEditError("Could not open video for face tracking.")
+    try:
+        sw, sh = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = max(1.0, cap.get(cv2.CAP_PROP_FPS))
+        duration = min(float(max_duration), cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps)
+        ow, oh = sizes[aspect_ratio]
+        scale = max(ow / max(1, sw), oh / max(1, sh))
+        vw, vh = ow / (sw * scale), oh / (sh * scale)
+        detector = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        if detector.empty():
+            raise ComedyEditError("OpenCV face detector model could not be loaded.")
+        points, smooth_x, smooth_y = [], None, None
+        t = 0.0
+        while t < duration:
+            cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
+            ok, frame = cap.read()
+            if not ok:
+                break
+            h, w = frame.shape[:2]
+            nw = min(480, w)
+            small = cv2.resize(frame, (nw, max(1, int(h * nw / w))))
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            faces = detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(24, 24))
+            if len(faces):
+                x, y, fw, fh = max(faces, key=lambda box: int(box[2]) * int(box[3]))
+                cx, cy = (x + fw / 2) / small.shape[1], (y + fh / 2) / small.shape[0]
+                tx = min(1.0, max(0.0, (cx - vw / 2) / max(1e-6, 1 - vw)))
+                ty = min(1.0, max(0.0, (cy - vh / 2) / max(1e-6, 1 - vh)))
+                smooth_x = tx if smooth_x is None else 0.35 * tx + 0.65 * smooth_x
+                smooth_y = ty if smooth_y is None else 0.35 * ty + 0.65 * smooth_y
+                points.append({"time": round(t, 3), "x": round(smooth_x, 4), "y": round(smooth_y, 4)})
+            t += max(0.1, float(sample_interval))
+        return points
+    finally:
+        cap.release()
