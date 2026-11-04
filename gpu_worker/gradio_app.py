@@ -17,6 +17,7 @@ from ti2v_adapter import TI2VSetupError, run_ti2v_job
 from wan_animate_adapter import WanSetupError, run_wan_animate_job
 from gemini_story_planner import GeminiPlannerError, generate_story_plan
 from story_render_pipeline import StoryRenderPlanError, manifest_json
+from story_render_runner import StoryRenderPipelineError, render_story_to_mp4
 
 
 def _file_info(path: str | None, label: str) -> dict:
@@ -86,6 +87,46 @@ def prepare_story_render_manifest(plan_json, reference_path, default_voice):
         raise gr.Error("ముందుగా AI కథా ప్లానర్ ఇచ్చిన సరైన JSON ఇక్కడ paste చేయండి.") from exc
     except (StoryRenderPlanError, TypeError, ValueError) as exc:
         raise gr.Error(str(exc)) from exc
+
+
+def render_full_story_from_manifest(manifest_json_text, reference_path):
+    """Render a complete approved story on a persistent, preconfigured GPU host."""
+    wan_repo = os.environ.get("WAN_REPO_PATH", "").strip()
+    checkpoint = os.environ.get("WAN_TI2V_CHECKPOINT", "").strip()
+    if not wan_repo or not checkpoint:
+        raise gr.Error(
+            "పూర్తి కథ render చేయడానికి persistent GPU hostలో "
+            "WAN_REPO_PATH మరియు WAN_TI2V_CHECKPOINT అవసరం. "
+            "ప్రస్తుత Space GPU configuration ఇంకా సిద్ధంగా లేదు."
+        )
+    try:
+        import torch
+    except Exception as exc:
+        raise gr.Error(f"PyTorch అందుబాటులో లేదు: {exc}") from exc
+    if not torch.cuda.is_available():
+        raise gr.Error(
+            "ఈ full-story tabకు నిరంతర CUDA GPU అవసరం. "
+            "Short-lived ZeroGPU callలో multi-scene rendering ప్రారంభించము."
+        )
+    try:
+        manifest = json.loads(manifest_json_text or "")
+    except json.JSONDecodeError as exc:
+        raise gr.Error("సరైన Render Manifest JSON ఇవ్వండి.") from exc
+    if reference_path:
+        _file_info(reference_path, "క్యారెక్టర్ reference")
+    output_dir = Path(tempfile.mkdtemp(prefix="macherla_full_story_"))
+    try:
+        result = render_story_to_mp4(
+            manifest,
+            wan_repo=wan_repo,
+            checkpoint_dir=checkpoint,
+            output_dir=str(output_dir),
+            reference_image=reference_path or None,
+            render_timeout_seconds=2700,
+        )
+    except (StoryRenderPipelineError, ValueError, OSError) as exc:
+        raise gr.Error(f"పూర్తి కథ render విఫలమైంది: {exc}") from exc
+    return str(result)
 
 
 def create_telugu_voice(dialogue, voice_label, rate_label):
@@ -311,6 +352,29 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
             prepare_story_render_manifest,
             inputs=[render_plan_input, render_reference, render_voice],
             outputs=render_manifest_output,
+        )
+
+
+    with gr.Tab("పూర్తి కథ వీడియో (GPU)"):
+        gr.Markdown(
+            "అనుమతి ఇచ్చిన Scene Render Manifest JSONను ఇక్కడ paste చేసి, "
+            "అదే పాత్ర reference image upload చేయండి. ఈ బటన్ ప్రతి సీన్‌ను "
+            "Wan2.2 TI2V-5Bతో render చేసి, సీన్లను కలిపి, తెలుగు dialogue "
+            "soundtrack జోడించి Final MP4 ఇస్తుంది. "
+            "దీనికి persistent CUDA GPU, model weights, సరైన environment paths అవసరం. "
+            "Short-lived ZeroGPUలో ఈ multi-scene render ప్రారంభించదు."
+        )
+        full_story_manifest = gr.Code(label="Scene Render Manifest JSON", language="json")
+        full_story_reference = gr.Image(
+            label="పాత్రల reference image (ఐచ్చికం)",
+            type="filepath",
+        )
+        full_story_button = gr.Button("పూర్తి కథను render చేయి", variant="primary")
+        full_story_output = gr.Video(label="పూర్తి కథ Final MP4")
+        full_story_button.click(
+            render_full_story_from_manifest,
+            inputs=[full_story_manifest, full_story_reference],
+            outputs=full_story_output,
         )
 
     with gr.Tab("తెలుగు వాయిస్"):
