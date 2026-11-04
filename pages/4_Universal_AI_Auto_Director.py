@@ -35,6 +35,7 @@ playback_speed = {"Slow cinematic (0.85x)": 0.85, "Normal (1.0x)": 1.0, "Fast (1
 duration = st.slider("Maximum output duration (seconds)", 1, 20, 20)
 threshold = st.slider("Scene-change sensitivity", 0.10, 0.60, 0.28, 0.02)
 music = st.file_uploader("Optional background music (MP3/WAV/AAC)", type=["mp3", "wav", "aac", "m4a"])
+sfx = st.file_uploader("Optional comedy/reaction sound effect (MP3/WAV/AAC)", type=["mp3", "wav", "aac", "m4a"])
 subtitle = st.file_uploader("Optional subtitles (SRT)", type=["srt"])
 auto_subtitles = st.checkbox("Auto-generate subtitles from speech (Whisper)", value=False)
 face_tracking = st.checkbox("Enable face-aware camera tracking (experimental)", value=True)
@@ -42,6 +43,7 @@ gemini_analysis = st.checkbox("Gemini AI story + dialogue analysis (uses API quo
 subtitle_language = st.selectbox("Speech language", ["Auto detect", "Telugu", "English", "Hindi", "Tamil", "Kannada", "Malayalam"])
 whisper_model = st.selectbox("Whisper model (CPU)", ["tiny", "base", "small"], index=0)
 music_volume = st.slider("Background music volume", 0.0, 0.35, 0.12, 0.01)
+sfx_volume = st.slider("Sound-effect volume", 0.0, 0.8, 0.22, 0.02)
 st.caption(
     "Visual scene analysis is separate from dialogue meaning. Optional face-aware crop tracking and Whisper speech-to-text are available; reaction shots are not generated."
 )
@@ -55,6 +57,10 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
         if music is not None:
             music_path = root / ("music" + Path(music.name).suffix.lower())
             music_path.write_bytes(music.getvalue())
+        sfx_path = None
+        if sfx is not None:
+            sfx_path = root / ("sound_effect" + Path(sfx.name).suffix.lower())
+            sfx_path.write_bytes(sfx.getvalue())
         subtitle_path = None
         if subtitle is not None:
             subtitle_path = root / "captions.srt"
@@ -136,6 +142,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     music_volume=music_volume, max_duration=duration, punch_times=punch_times,
                     subtitle_file=str(subtitle_path) if subtitle_path else None,
                     playback_speed=playback_speed, face_track_points=face_track_points,
+                    sfx_file=str(sfx_path) if sfx_path else None, sfx_volume=sfx_volume,
                 )
             data = Path(rendered).read_bytes()
             st.success("3/3 వీడియో ఎడిటింగ్ పూర్తయింది!")
@@ -163,8 +170,8 @@ st.divider()
 st.markdown(
     "**ఈ వెర్షన్‌లో:** visual scene-change detection, smooth scene-aware punch zooms, "
     "9:16/16:9/1:1 reframing, experimental face-aware crop tracking, contrast/saturation/sharpen polish, original dialogue preservation, "
-    "optional low-volume background music, adjustable 0.85x–1.15x speed, smooth fade-in/fade-out, optional SRT subtitles, "
+    "optional low-volume background music and timed comedy/reaction sound-effect overlays at director punch cues, adjustable 0.85x–1.15x speed, smooth fade-in/fade-out, optional SRT subtitles, "
     "Whisper multilingual speech-to-text with transcript and phrase-timed punch points, optional Gemini video/story/dialogue moment analysis, final MP4 + JSON edit-plan export. "
-    "**ఇంకా అందుబాటులో లేనివి:** automatic reaction-shot insertion, per-word sound effects, AI lip-sync generation, and new-scene generation. "
+    "**ఇంకా అందుబాటులో లేనివి:** automatic reaction-shot insertion, per-word sound-effect selection, AI lip-sync generation, and new-scene generation. "
     "Gemini and face tracking require real-video testing; face detection can miss stylized/cartoon characters."
 )
