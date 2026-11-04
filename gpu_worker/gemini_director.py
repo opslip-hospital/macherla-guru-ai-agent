@@ -15,7 +15,7 @@ class GeminiDirectorError(ValueError):
 def analyze_video_with_gemini(video_path: str, api_key: str, *, mime_type: str = "video/mp4") -> dict:
     source = Path(video_path)
     if not api_key:
-        raise GeminiDirectorError("GEMINI_API_KEY is not configured in Streamlit Secrets.")
+        raise GeminiDirectorError("GEMINI_API_KEY is not configured in Streamlit Secrets or environment variables.")
     if not source.is_file() or source.stat().st_size == 0:
         raise GeminiDirectorError("Video file is missing for Gemini analysis.")
     data = source.read_bytes()
@@ -51,6 +51,8 @@ def analyze_video_with_gemini(video_path: str, api_key: str, *, mime_type: str =
         for _ in range(30):
             if state == "ACTIVE":
                 break
+            if state == "FAILED":
+                raise GeminiDirectorError("Gemini could not process this video file. Try an MP4 export.")
             time.sleep(2)
             check = requests.get(
                 "https://generativelanguage.googleapis.com/v1beta/" + info.get("name", ""),
@@ -73,9 +75,9 @@ def analyze_video_with_gemini(video_path: str, api_key: str, *, mime_type: str =
         response = requests.post(
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
             headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"file_data": {"mime_type": mime_type, "file_uri": uri}},
+            json={"contents": [{"parts": [{"file_data": {"mime_type": mime_type, "file_uri": uri}, "media_processing": "AGENTIC"},
                                             {"text": prompt}]}],
-                  "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"}},
+                  "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json", "maxOutputTokens": 1600}},
             timeout=240,
         )
         response.raise_for_status()
