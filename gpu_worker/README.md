@@ -22,7 +22,7 @@ This is an isolated GPU-worker prototype. It is **not deployed and has not rende
 - **Preflight:** validates source files and displays a job manifest.
 - **GPU status:** checks whether CUDA hardware is visible.
 
-The Telugu voice and dialogue soundtrack tabs are independent of GPU inference. They need an internet connection and the Edge TTS online service; availability and service behavior may change. The soundtrack builder creates a sequential WAV of dialogue lines, but it does not perform lip-sync or mux the audio into a generated video.
+The Telugu voice and dialogue soundtrack tabs are independent of GPU inference. They need an internet connection and the Edge TTS online service; availability and service behavior may change. The soundtrack builder creates a sequential WAV of dialogue lines. The video + dialogue tab combines that track with a rendered MP4 and can optionally mix the original source audio. Neither feature performs lip-sync.
 
 ## Not ready to deploy as a working video generator
 
@@ -38,8 +38,12 @@ No model weights are downloaded automatically. Do not enable paid hardware or cr
 
 - The current TI2V test is deliberately short (41 frames), not a full 10-second story.
 - Wan2.2 TI2V/Animate models generate silent video; they do not create Telugu dialogue audio.
-- Telugu TTS can create separate MP3 lines and a combined WAV dialogue track; a separate mux step can add the soundtrack to MP4. Accurate Telugu lip-sync, scene stitching, and sound effects are not implemented.
+- Telugu TTS can create separate MP3 lines and a combined WAV dialogue track; the separate mux tab can add the soundtrack to MP4. Accurate Telugu lip-sync, scene stitching, and sound effects are not implemented.
 - The source-video preflight tab does not itself render a video; use the dedicated generation tabs when model configuration is complete.
+
+## Lip-sync candidate evaluation
+
+MuseTalk is a possible next experiment: its upstream README states MIT licensing for code and commercial use for its trained model, but lists Chinese, English and Japanese audio examples rather than Telugu. It edits a 256×256 face region and documents identity-detail loss and frame jitter. It may not reliably detect or preserve stylized 3D CGI faces, moustaches or PJ Babu/Yamudu designs. A Telugu test clip is required before integration. Its additional model dependencies have separate license terms. Wav2Lip is not selected because upstream restricts use to personal/research/non-commercial purposes.
 
 ## Validation
 
