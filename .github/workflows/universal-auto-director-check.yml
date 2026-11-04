@@ -76,4 +76,33 @@ jobs:
                   if "Video:" not in (probe.stderr or "") or "Duration:" not in (probe.stderr or ""):
                       raise RuntimeError(f"{label}: FFmpeg could not read output MP4")
                   print(f"PASS {label}: {output.stat().st_size} bytes")
+
+              # Exercise Whisper result formatting without downloading a speech model.
+              import sys
+              import types
+              from gpu_worker.auto_subtitles import transcribe_to_srt
+              class FakeSegment:
+                  def __init__(self, start, end, text):
+                      self.start, self.end, self.text = start, end, text
+              class FakeWhisperModel:
+                  def __init__(self, *args, **kwargs):
+                      pass
+                  def transcribe(self, *args, **kwargs):
+                      return iter([FakeSegment(0.25, 0.95, "నమస్కారం మావా"), FakeSegment(1.2, 2.0, "ఇది పరీక్ష")]), None
+              sys.modules["faster_whisper"] = types.SimpleNamespace(WhisperModel=FakeWhisperModel)
+              dummy_input = root / "speech-source.mp4"
+              dummy_input.write_bytes(b"fake input for mocked speech model")
+              transcript_srt = root / "speech.srt"
+              punch_json = root / "speech-points.json"
+              transcript_json = root / "transcript.json"
+              transcribe_to_srt(str(dummy_input), str(transcript_srt),
+                                punch_points_path=str(punch_json),
+                                transcript_path=str(transcript_json))
+              import json
+              segments = json.loads(transcript_json.read_text(encoding="utf-8"))
+              points = json.loads(punch_json.read_text(encoding="utf-8"))
+              assert len(segments) == 2 and segments[0]["text"] == "నమస్కారం మావా"
+              assert points == [0.25, 1.2]
+              assert "నమస్కారం మావా" in transcript_srt.read_text(encoding="utf-8")
+              print("PASS Whisper transcript, subtitle timing, and speech punch-point export")
           PY
