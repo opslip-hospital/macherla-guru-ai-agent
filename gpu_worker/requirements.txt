@@ -1,4 +1,6 @@
 gradio>=5.0,<6
 spaces>=0.40
 torch>=2.8
-edge-tts>=7.0,<8\nimageio-ffmpeg>=0.5,<1\n
+edge-tts>=7.0,<8
+imageio-ffmpeg>=0.5,<1
+requests>=2.32,<3
