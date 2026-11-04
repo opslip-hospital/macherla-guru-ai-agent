@@ -15,7 +15,8 @@ This is an isolated GPU-worker prototype. It is **not deployed and has not rende
 
 ## UI paths
 
-- **Telugu voice:** creates a separate MP3 using the online Edge TTS service, with Telugu male (Mohan) and female (Shruti) voices.\n- **Character dialogue soundtrack:** accepts speaker-labelled Telugu lines (`Speaker|Voice|Dialogue`), synthesizes each line, inserts short pauses, and joins them into one WAV soundtrack using FFmpeg.
+- **Telugu voice:** creates a separate MP3 using the online Edge TTS service, with Telugu male (Mohan) and female (Shruti) voices.
+- **Character dialogue soundtrack:** accepts speaker-labelled Telugu lines (`Speaker|Voice|Dialogue`), synthesizes each line, inserts short pauses, and joins them into one WAV soundtrack using FFmpeg.
 - **Video + dialogue mux:** combines a rendered MP4 with the Telugu WAV/MP3 track; optionally mixes original source audio at a lower volume.
 - **New scene:** Wan2.2 TI2V-5B text-to-video or image-to-video runner.
 - **Animate / replace character:** Wan2.2 Animate-14B runner using an uploaded driving video and character reference image.
