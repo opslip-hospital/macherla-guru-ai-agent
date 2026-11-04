@@ -409,7 +409,7 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
             label="పాత్రల డైలాగ్ స్క్రిప్ట్",
             lines=7,
             value=(
-                "PJ Babu|Mohan (పురుష వాయిస్)|ఏమైంది స్వామీ?\\n"
+                "PJ Babu|Mohan (పురుష వాయిస్)|ఏమైంది స్వామీ?\n"
                 "యముడు|Mohan (పురుష వాయిస్)|గిన్నెలు నీట్‌గా తోమలేదని చీపురుతో కొట్టిందిరా!"
             ),
         )
