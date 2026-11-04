@@ -18,6 +18,7 @@ def transcribe_to_srt(
     compute_type: str = "int8",
     punch_points_path: str | None = None,
     transcript_path: str | None = None,
+    word_timestamps_path: str | None = None,
 ) -> str:
     source = Path(audio_video_path)
     if not source.is_file() or source.stat().st_size == 0:
@@ -34,7 +35,7 @@ def transcribe_to_srt(
         model = WhisperModel(model_size, device=device, compute_type=compute_type)
         segments, _info = model.transcribe(
             str(source), language=language, beam_size=1, vad_filter=True,
-            word_timestamps=False,
+            word_timestamps=True,
         )
         def stamp(seconds: float) -> str:
             ms = max(0, int(round(float(seconds) * 1000)))
@@ -45,13 +46,21 @@ def transcribe_to_srt(
         entries = []
         speech_points = []
         transcript_segments = []
+        word_timestamps = []
         for segment in segments:
             text = (segment.text or "").strip()
             if not text:
                 continue
             # Phrase starts provide speech-aware visual emphasis points without changing dialogue.
             speech_points.append(round(max(0.0, float(segment.start)), 3))
-            transcript_segments.append({"start": round(float(segment.start), 3), "end": round(float(segment.end), 3), "text": text})
+            words = []
+            for word in (getattr(segment, "words", None) or []):
+                token = (getattr(word, "word", "") or "").strip()
+                if token:
+                    timed_word = {"start": round(float(word.start), 3), "end": round(float(word.end), 3), "word": token}
+                    words.append(timed_word)
+                    word_timestamps.append(timed_word)
+            transcript_segments.append({"start": round(float(segment.start), 3), "end": round(float(segment.end), 3), "text": text, "words": words})
             entries.append(
                 f"{len(entries) + 1}\n{stamp(segment.start)} --> {stamp(segment.end)}\n{text}"
             )
@@ -60,12 +69,14 @@ def transcribe_to_srt(
         target = Path(output_srt)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("\n\n".join(entries) + "\n", encoding="utf-8")
-        if punch_points_path or transcript_path:
+        if punch_points_path or transcript_path or word_timestamps_path:
             import json
             if punch_points_path:
                 Path(punch_points_path).write_text(json.dumps(speech_points), encoding="utf-8")
             if transcript_path:
                 Path(transcript_path).write_text(json.dumps(transcript_segments, ensure_ascii=False, indent=2), encoding="utf-8")
+            if word_timestamps_path:
+                Path(word_timestamps_path).write_text(json.dumps(word_timestamps, ensure_ascii=False, indent=2), encoding="utf-8")
         return str(target)
     except SubtitleError:
         raise
