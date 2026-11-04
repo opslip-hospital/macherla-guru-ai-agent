@@ -6,7 +6,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-try:\n    from .telugu_tts import TELUGU_VOICES, TeluguTTSSetupError, synthesize_telugu_speech\nexcept ImportError:  # Gradio Space runs this directory as its working import root.\n    from telugu_tts import TELUGU_VOICES, TeluguTTSSetupError, synthesize_telugu_speech
+try:
+    from .telugu_tts import TELUGU_VOICES, TeluguTTSSetupError, synthesize_telugu_speech
+except ImportError:  # Gradio Space runs this directory as its working import root.
+    from telugu_tts import TELUGU_VOICES, TeluguTTSSetupError, synthesize_telugu_speech
 
 
 class DialogueAudioError(RuntimeError):
