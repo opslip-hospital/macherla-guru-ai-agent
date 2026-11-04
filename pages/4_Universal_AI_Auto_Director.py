@@ -97,6 +97,16 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 plan["note"] += " Speech phrase starts can also guide punch zoom timing when Whisper subtitles are enabled."
                 gemini_times = [float(item["time"]) for item in gemini_result.get("moments", [])]
                 punch_times = sorted({round(float(x), 3) for x in cuts + speech_points + gemini_times if 0.15 < float(x) < float(duration)})
+                # Keep the combined edit cues visible and exportable, not just inside the FFmpeg render.
+                plan["combined_director_cues"] = [
+                    {"time": point, "action": "smooth_punch_zoom",
+                     "sources": [name for name, values in (
+                         ("visual_scene_change", cuts), ("speech_phrase_start", speech_points),
+                         ("gemini_story_moment", gemini_times)
+                     ) if any(abs(float(value) - point) < 0.01 for value in values)]}
+                    for point in punch_times
+                ]
+                plan["punch_moments"] = plan["combined_director_cues"]
             st.subheader("🎬 Auto Director Edit Plan")
             st.write(f"గుర్తించిన visual scene changes: {len(cuts)}")
             if face_tracking:
