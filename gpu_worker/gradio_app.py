@@ -55,7 +55,7 @@ def prepare_job(video_path, reference_path, story_te, mode, aspect_ratio):
     )
 
 
-@spaces.GPU(duration=240)
+@spaces.GPU(duration=120)
 def generate_new_scene(prompt_te, aspect_ratio, reference_path):
     """Render a short new shot only when an operator has mounted the weights."""
     wan_repo = os.environ.get("WAN_REPO_PATH", "").strip()
@@ -81,14 +81,14 @@ def generate_new_scene(prompt_te, aspect_ratio, reference_path):
             aspect_ratio=aspect_ratio,
             frame_num=41,
             reference_image=reference_path or None,
-            timeout_seconds=230,
+            timeout_seconds=110,
         )
     except TI2VSetupError as exc:
         raise gr.Error(str(exc)) from exc
     return str(rendered)
 
 
-@spaces.GPU(duration=240)
+@spaces.GPU(duration=120)
 def animate_or_replace_character(video_path, reference_path, mode, resolution):
     """Animate/replace a reference character in the uploaded driving video."""
     wan_repo = os.environ.get("WAN_REPO_PATH", "").strip()
@@ -115,7 +115,7 @@ def animate_or_replace_character(video_path, reference_path, mode, resolution):
             mode=mode,
             resolution_width=width,
             resolution_height=height,
-            timeout_seconds=230,
+            timeout_seconds=110,
         )
     except WanSetupError as exc:
         raise gr.Error(str(exc)) from exc
@@ -134,16 +134,16 @@ def inspect_gpu():
     total_gib = props.total_memory / (1024 ** 3)
     free_gib = torch.cuda.mem_get_info(0)[0] / (1024 ** 3)
     return (
-        f"GPU: {props.name}\\n"
-        f"VRAM మొత్తం: {total_gib:.1f} GiB\\n"
-        f"ప్రస్తుతం ఖాళీ VRAM: {free_gib:.1f} GiB\\n"
+        f"GPU: {props.name}\n"
+        f"VRAM మొత్తం: {total_gib:.1f} GiB\n"
+        f"ప్రస్తుతం ఖాళీ VRAM: {free_gib:.1f} GiB\n"
         "గమనిక: GPU కనిపించడం మాత్రమే Wan2.2 మోడల్ లోడ్ అవుతుందని నిర్ధారణ కాదు."
     )
 
 
 with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
     gr.Markdown(
-        "# 🎬 Macherla Guru — AI Video Worker\\n"
+        "# 🎬 Macherla Guru — AI Video Worker\n"
         "తెలుగు కథ ఆధారంగా కొత్త సన్నివేశం తయారు చేయడానికి ప్రయోగాత్మక వర్కర్. "
         "మోడల్ ఫైల్స్ సిద్ధంగా ఉన్నప్పుడు మాత్రమే నిజమైన MP4 render ప్రారంభమవుతుంది."
     )
@@ -202,11 +202,11 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         gpu_button.click(inspect_gpu, outputs=gpu_result)
 
     gr.Markdown(
-        "### పరిమితులు\\n"
+        "### పరిమితులు\n"
         "- కొత్త సన్నివేశాల కోసం Wan2.2 TI2V-5B runner కనెక్ట్ చేయబడింది; "
-        "కానీ model weights / GPU ఇంకా configure చేయలేదు.\\n"
-        "- పాత వీడియోలో క్యారెక్టర్ animation/replacement tab ఉంది; కానీ WAN_ANIMATE_CHECKPOINT, GPU లేకుండా render జరగదు.\\n"
-        "- తెలుగు voice generation, lip-sync, multi-scene stitching ఇంకా చేయాల్సి ఉంది.\\n"
+        "కానీ model weights / GPU ఇంకా configure చేయలేదు.\n"
+        "- పాత వీడియోలో క్యారెక్టర్ animation/replacement tab ఉంది; కానీ WAN_ANIMATE_CHECKPOINT, GPU లేకుండా render జరగదు.\n"
+        "- తెలుగు voice generation, lip-sync, multi-scene stitching ఇంకా చేయాల్సి ఉంది.\n"
         "- మోడల్ weights ఆటోమేటిక్‌గా download కావు; paid hardware అనుమతి లేకుండా enable చేయరాదు."
     )
 
