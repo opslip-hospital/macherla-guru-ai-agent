@@ -82,9 +82,11 @@ def detect_face_tracking(video_path: str, *, aspect_ratio: str = "9:16", max_dur
             # Some minimal OpenCV wheels omit the legacy Haar API; safely fall back to center framing.
             return []
         detector = cascade_type(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+        profile_detector = cascade_type(cv2.data.haarcascades + "haarcascade_profileface.xml")
         if detector.empty():
             raise ComedyEditError("OpenCV face detector model could not be loaded.")
         points, smooth_x, smooth_y = [], None, None
+        previous_center = None
         t = 0.0
         while t < duration:
             cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
@@ -95,10 +97,26 @@ def detect_face_tracking(video_path: str, *, aspect_ratio: str = "9:16", max_dur
             nw = min(480, w)
             small = cv2.resize(frame, (nw, max(1, int(h * nw / w))))
             gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            faces = detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(24, 24))
-            if len(faces):
-                x, y, fw, fh = max(faces, key=lambda box: int(box[2]) * int(box[3]))
+            faces = list(detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(24, 24)))
+            # Profile-face detection catches some side-facing people missed by the frontal cascade.
+            if not profile_detector.empty():
+                profiles = profile_detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(24, 24))
+                faces.extend(list(profiles))
+                flipped = cv2.flip(gray, 1)
+                mirrored = profile_detector.detectMultiScale(flipped, scaleFactor=1.1, minNeighbors=4, minSize=(24, 24))
+                faces.extend([(gray.shape[1] - x - fw, y, fw, fh) for x, y, fw, fh in mirrored])
+            if faces:
+                def face_score(box):
+                    x, y, fw, fh = box
+                    center = ((x + fw / 2) / small.shape[1], (y + fh / 2) / small.shape[0])
+                    area_bonus = 0.04 * ((fw * fh) / max(1, gray.shape[0] * gray.shape[1])) ** 0.5
+                    if previous_center is None:
+                        return area_bonus
+                    distance = ((center[0] - previous_center[0]) ** 2 + (center[1] - previous_center[1]) ** 2) ** 0.5
+                    return -distance + area_bonus
+                x, y, fw, fh = max(faces, key=face_score)
                 cx, cy = (x + fw / 2) / small.shape[1], (y + fh / 2) / small.shape[0]
+                previous_center = (cx, cy)
                 tx = min(1.0, max(0.0, (cx - vw / 2) / max(1e-6, 1 - vw)))
                 ty = min(1.0, max(0.0, (cy - vh / 2) / max(1e-6, 1 - vh)))
                 smooth_x = tx if smooth_x is None else 0.35 * tx + 0.65 * smooth_x
