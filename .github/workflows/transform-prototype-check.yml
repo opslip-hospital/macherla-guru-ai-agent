@@ -24,3 +24,6 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Check ZIP and hashing standard library imports
         run: python -c "import hashlib, io, json, re, uuid, zipfile"
+
+      - name: Validate GPU worker requirements
+        run: python -c "from pathlib import Path; p=Path('gpu_worker/requirements.txt'); s=p.read_text(); assert '\\\\n' not in s; assert all(line.strip() for line in s.splitlines())"
