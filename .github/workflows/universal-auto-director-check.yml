@@ -39,6 +39,7 @@ jobs:
               silent = root / "silent.mp4"
               voiced = root / "voiced.mp4"
               music = root / "music.m4a"
+              sfx = root / "sfx.wav"
               srt = root / "captions.srt"
 
               def run(args):
@@ -53,6 +54,8 @@ jobs:
                    "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(voiced)])
               run([ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=3",
                    "-c:a", "aac", str(music)])
+              run([ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=0.8",
+                   "-c:a", "pcm_s16le", str(sfx)])
               face_points = detect_face_tracking(str(voiced), aspect_ratio="9:16", max_duration=3)
               assert isinstance(face_points, list)
               print(f"PASS face tracking sampling: {len(face_points)} face anchors")
@@ -67,6 +70,8 @@ jobs:
                   ("voiced-no-music-fast", voiced, {"playback_speed": 1.15, "face_track_points": [{"time": 0.0, "x": 0.35, "y": 0.5}, {"time": 1.0, "x": 0.65, "y": 0.5}]}),
                   ("voiced-music-srt-slow", voiced, {"music_file": str(music), "subtitle_file": str(srt), "playback_speed": 0.85}),
                   ("silent-with-music", silent, {"music_file": str(music)}),
+                  ("voiced-timed-sfx", voiced, {"sfx_file": str(sfx), "sfx_volume": 0.2, "punch_times": [0.5, 1.6]}),
+                  ("silent-sfx-only", silent, {"sfx_file": str(sfx), "sfx_volume": 0.25, "punch_times": [0.75]}),
               ]
               for label, source, options in cases:
                   output = root / f"{label}.mp4"
