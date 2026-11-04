@@ -22,7 +22,9 @@ def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", pun
     width, height = sizes[aspect_ratio]
     zoom = {"Medium": "1.07", "High": "1.12", "Extreme": "1.18"}[intensity]
     conditions = [f"between(on,{max(0, int(float(t) * 30))},{max(0, int(float(t) * 30) + 6)})" for t in (punch_times or [])[:20]]
-    z_expr = f"if({chr(44).join(conditions)},{zoom},if(lt(mod(on,45),5),{zoom},1.0))" if conditions else f"if(lt(mod(on,45),5),{zoom},1.0)"
+    z_expr = f"if(lt(mod(on,45),5),{zoom},1.0)"
+    for condition in reversed(conditions):
+        z_expr = f"if({condition},{zoom},{z_expr})"
     return (
         f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
         f"crop={width}:{height},setsar=1,"
