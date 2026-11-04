@@ -78,11 +78,13 @@ def prepare_story_render_manifest(plan_json, reference_path, default_voice):
     try:
         plan = json.loads(plan_json or "")
         reference_name = Path(reference_path).name if reference_path else None
-        return manifest_json(
+        prepared = manifest_json(
             plan,
             reference_image_name=reference_name,
             default_voice=default_voice,
         )
+        # Carry the approved plan, manifest and same reference image forward.
+        return json.dumps(plan, ensure_ascii=False, indent=2), prepared, prepared, reference_path
     except json.JSONDecodeError as exc:
         raise gr.Error("ముందుగా AI కథా ప్లానర్ ఇచ్చిన సరైన JSON ఇక్కడ paste చేయండి.") from exc
     except (StoryRenderPlanError, TypeError, ValueError) as exc:
@@ -305,6 +307,7 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         "మోడల్ ఫైల్స్ సిద్ధంగా ఉన్నప్పుడు మాత్రమే నిజమైన MP4 render ప్రారంభమవుతుంది."
     )
 
+    story_plan_state = gr.State(value=None)
     with gr.Tab("AI కథా ప్లానర్"):
         gr.Markdown(
             "తెలుగులో కథ రాస్తే Gemini దాన్ని సీన్లుగా విభజించి, ప్రతి సీన్‌కు "
@@ -323,9 +326,9 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         planner_button = gr.Button("Geminiతో సీన్ల ప్లాన్ తయారు చేయి", variant="primary")
         planner_output = gr.Code(label="సీన్ ప్లాన్ JSON", language="json")
         planner_button.click(
-            plan_telugu_story,
+            lambda *args: (result := plan_telugu_story(*args), result),
             inputs=[planner_story, planner_character, planner_ratio, planner_style, planner_duration],
-            outputs=planner_output,
+            outputs=[planner_output, story_plan_state],
         )
         gr.Markdown(
             "ఈ tab కోసం Hugging Face Space Secretsలో GEMINI_API_KEY అవసరం. "
@@ -335,11 +338,11 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
 
     with gr.Tab("సీన్ Render ప్లాన్"):
         gr.Markdown(
-            "AI కథా ప్లానర్ ఇచ్చిన JSONను ఇక్కడ paste చేయండి. ఇది ప్రతి సీన్‌కు "
+            "AI కథా ప్లానర్ తయారు చేసిన కథను ఈ బటన్ నేరుగా తీసుకుంటుంది. JSONను మళ్లీ paste చేయాల్సిన అవసరం లేదు. ఇది ప్రతి సీన్‌కు "
             "Wan2.2 frame count, visual prompt, common reference image, తెలుగు "
             "డైలాగ్ soundtrack script సిద్ధం చేస్తుంది. ఇది render చేయదు."
         )
-        render_plan_input = gr.Code(label="Gemini story plan JSON", language="json")
+        render_plan_input = gr.Code(label="Gemini story plan JSON (ఆటోమేటిక్‌గా వస్తుంది)", language="json")
         render_reference = gr.Image(label="అన్ని సీన్లకు common character reference (ఐచ్చికం)", type="filepath")
         render_voice = gr.Radio(
             choices=list(TELUGU_VOICES.keys()),
@@ -348,13 +351,6 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
         )
         render_manifest_button = gr.Button("సీన్ Render Manifest తయారు చేయి", variant="primary")
         render_manifest_output = gr.Code(label="Render job manifest (ఇంకా render కాలేదు)", language="json")
-        render_manifest_button.click(
-            prepare_story_render_manifest,
-            inputs=[render_plan_input, render_reference, render_voice],
-            outputs=render_manifest_output,
-        )
-
-
     with gr.Tab("పూర్తి కథ వీడియో (GPU)"):
         gr.Markdown(
             "అనుమతి ఇచ్చిన Scene Render Manifest JSONను ఇక్కడ paste చేసి, "
@@ -364,7 +360,7 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
             "దీనికి persistent CUDA GPU, model weights, సరైన environment paths అవసరం. "
             "Short-lived ZeroGPUలో ఈ multi-scene render ప్రారంభించదు."
         )
-        full_story_manifest = gr.Code(label="Scene Render Manifest JSON", language="json")
+        full_story_manifest = gr.Code(label="Scene Render Manifest JSON (ఆటోమేటిక్‌గా వస్తుంది)", language="json")
         full_story_reference = gr.Image(
             label="పాత్రల reference image (ఐచ్చికం)",
             type="filepath",
@@ -375,6 +371,11 @@ with gr.Blocks(title="Macherla Guru — AI Video GPU Worker") as demo:
             render_full_story_from_manifest,
             inputs=[full_story_manifest, full_story_reference],
             outputs=full_story_output,
+        )
+        render_manifest_button.click(
+            prepare_story_render_manifest,
+            inputs=[story_plan_state, render_reference, render_voice],
+            outputs=[render_plan_input, render_manifest_output, full_story_manifest, full_story_reference],
         )
 
     with gr.Tab("తెలుగు వాయిస్"):
