@@ -5,7 +5,8 @@ from pathlib import Path
 import streamlit as st
 
 from gpu_worker.auto_director import detect_scene_changes, make_comedy_edit_decision
-from gpu_worker.comedy_edit import ComedyEditError, render_comedy_edit\nfrom gpu_worker.auto_subtitles import SubtitleError, transcribe_to_srt
+from gpu_worker.comedy_edit import ComedyEditError, render_comedy_edit
+from gpu_worker.auto_subtitles import SubtitleError, transcribe_to_srt
 
 st.set_page_config(page_title="Universal AI Auto Director", page_icon="🎬", layout="centered")
 st.title("🎬 Universal AI Auto Director & Video Editor")
@@ -22,7 +23,10 @@ intensity = st.select_slider("Dynamic punch intensity", options=["Medium", "High
 duration = st.slider("Maximum output duration (seconds)", 1, 20, 20)
 threshold = st.slider("Scene-change sensitivity", 0.10, 0.60, 0.28, 0.02)
 music = st.file_uploader("Optional background music (MP3/WAV/AAC)", type=["mp3", "wav", "aac", "m4a"])
-subtitle = st.file_uploader("Optional subtitles (SRT)", type=["srt"])\nauto_subtitles = st.checkbox("Auto-generate subtitles from speech (Whisper)", value=False)\nsubtitle_language = st.selectbox("Speech language", ["Auto detect", "Telugu", "English", "Hindi", "Tamil", "Kannada", "Malayalam"])\nwhisper_model = st.selectbox("Whisper model (CPU)", ["tiny", "base", "small"], index=0)
+subtitle = st.file_uploader("Optional subtitles (SRT)", type=["srt"])
+auto_subtitles = st.checkbox("Auto-generate subtitles from speech (Whisper)", value=False)
+subtitle_language = st.selectbox("Speech language", ["Auto detect", "Telugu", "English", "Hindi", "Tamil", "Kannada", "Malayalam"])
+whisper_model = st.selectbox("Whisper model (CPU)", ["tiny", "base", "small"], index=0)
 music_volume = st.slider("Background music volume", 0.0, 0.35, 0.12, 0.01)
 st.caption(
     "Scene analysis detects visual changes only; it does not understand Telugu dialogue, "
@@ -44,7 +48,11 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
             subtitle_path.write_bytes(subtitle.getvalue())
         output = root / "universal_edited_final.mp4"
         try:
-            if auto_subtitles and subtitle is None:\n                language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]\n                with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):\n                    subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model))\n            with st.spinner("1/3 వీడియో సీన్లను విశ్లేషిస్తున్నాం…"):
+            if auto_subtitles and subtitle is None:
+                language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
+                with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):
+                    subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model))
+            with st.spinner("1/3 వీడియో సీన్లను విశ్లేషిస్తున్నాం…"):
                 cuts = detect_scene_changes(str(source), threshold=threshold, max_duration=duration)
                 plan = make_comedy_edit_decision(cuts, duration=duration)
             st.subheader("🎬 Auto Director Edit Plan")
