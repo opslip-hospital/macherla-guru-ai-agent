@@ -54,7 +54,7 @@ def _probe_duration(path: Path) -> float:
         [_ffmpeg_path(), "-hide_banner", "-i", str(path)],
         capture_output=True, text=True, timeout=30,
     )
-    match = re.search(r"Duration:\\s*(\\d+):(\\d+):(\\d+(?:\\.\\d+)?)", probe.stderr or "")
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr or "")
     if not match:
         raise ComedyEditError("Could not read the input video's duration.")
     hours, minutes, seconds = match.groups()
