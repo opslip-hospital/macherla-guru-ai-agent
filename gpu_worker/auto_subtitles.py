@@ -17,6 +17,7 @@ def transcribe_to_srt(
     device: str = "cpu",
     compute_type: str = "int8",
     punch_points_path: str | None = None,
+    transcript_path: str | None = None,
 ) -> str:
     source = Path(audio_video_path)
     if not source.is_file() or source.stat().st_size == 0:
@@ -43,12 +44,14 @@ def transcribe_to_srt(
             return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
         entries = []
         speech_points = []
+        transcript_segments = []
         for segment in segments:
             text = (segment.text or "").strip()
             if not text:
                 continue
             # Phrase starts provide speech-aware visual emphasis points without changing dialogue.
             speech_points.append(round(max(0.0, float(segment.start)), 3))
+            transcript_segments.append({"start": round(float(segment.start), 3), "end": round(float(segment.end), 3), "text": text})
             entries.append(
                 f"{len(entries) + 1}\n{stamp(segment.start)} --> {stamp(segment.end)}\n{text}"
             )
@@ -57,9 +60,12 @@ def transcribe_to_srt(
         target = Path(output_srt)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("\n\n".join(entries) + "\n", encoding="utf-8")
-        if punch_points_path:
+        if punch_points_path or transcript_path:
             import json
-            Path(punch_points_path).write_text(json.dumps(speech_points), encoding="utf-8")
+            if punch_points_path:
+                Path(punch_points_path).write_text(json.dumps(speech_points), encoding="utf-8")
+            if transcript_path:
+                Path(transcript_path).write_text(json.dumps(transcript_segments, ensure_ascii=False, indent=2), encoding="utf-8")
         return str(target)
     except SubtitleError:
         raise
