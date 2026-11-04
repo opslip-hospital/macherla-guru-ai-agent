@@ -13,7 +13,22 @@ class ComedyEditError(ValueError):
     pass
 
 
-def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", punch_times: list[float] | None = None) -> str:
+def _track_expr(points: list[dict] | None, axis: str) -> str:
+    valid = sorted((p for p in (points or []) if axis in p), key=lambda p: float(p["time"]))[:40]
+    if not valid:
+        return "0.5"
+    expr = f"{float(valid[-1][axis]):.4f}"
+    for left, right in reversed(list(zip(valid, valid[1:]))):
+        t0, t1 = float(left["time"]), float(right["time"])
+        if t1 <= t0:
+            continue
+        v0, v1 = float(left[axis]), float(right[axis])
+        linear = f"({v0:.4f}+({v1-v0:.4f})*(t-{t0:.3f})/{t1-t0:.3f})"
+        expr = f"if(lt(t,{t1:.3f}),{linear},{expr})"
+    return f"if(lt(t,{float(valid[0]['time']):.3f}),{float(valid[0][axis]):.4f},{expr})"
+
+
+def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", punch_times: list[float] | None = None, face_track_points: list[dict] | None = None) -> str:
     sizes = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (720, 720)}
     if aspect_ratio not in sizes:
         raise ComedyEditError("Aspect ratio must be 9:16, 16:9, or 1:1.")
@@ -35,7 +50,7 @@ def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", pun
         z_expr = f"if({condition},{pulse},{z_expr})"
     return (
         f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop={width}:{height},setsar=1,"
+        f"crop={width}:{height}:x='(iw-ow)*({_track_expr(face_track_points, 'x') if face_track_points else '0.5'})':y='(ih-oh)*({_track_expr(face_track_points, 'y') if face_track_points else '0.5'})',setsar=1,"
         f"zoompan=z='{z_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
         f"d=1:s={width}x{height}:fps=30,"
         "eq=contrast=1.06:saturation=1.12:brightness=0.015,"
@@ -112,6 +127,7 @@ def render_comedy_edit(
     timeout_seconds: int = 900,
     punch_times: list[float] | None = None,
     playback_speed: float = 1.0,
+    face_track_points: list[dict] | None = None,
 ) -> str:
     source, output = Path(input_video), Path(output_video)
     if not source.is_file() or source.stat().st_size == 0:
@@ -131,7 +147,7 @@ def render_comedy_edit(
     output_duration = min(float(max_duration), source_duration / float(playback_speed))
     fade_out_start = max(0.0, output_duration - 0.35)
     audio_fade_out_start = max(0.0, output_duration - 0.25)
-    video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times)
+    video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times, face_track_points=face_track_points)
     video_filter += f",setpts=PTS/{float(playback_speed):.3f},fade=t=in:st=0:d=0.25,fade=t=out:st={fade_out_start:.3f}:d=0.35"
     if subtitle_file:
         subtitle_path = _retime_srt(Path(subtitle_file), float(playback_speed))
