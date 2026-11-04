@@ -190,13 +190,15 @@ def render_comedy_edit(
             )
             audio_labels.append("[music]")
         if sfx_file:
-            moments = sorted({max(0.0, float(t)) for t in (punch_times or []) if 0 <= float(t) < output_duration})[:8]
+            source_window = min(source_duration, float(max_duration) * float(playback_speed))
+            moments = sorted({max(0.0, float(t)) for t in (punch_times or []) if 0 <= float(t) < source_window})[:8]
             if not moments:
                 moments = [0.5]
             split_labels = "".join(f"[sfxsrc{i}]" for i in range(len(moments)))
             graph_parts.append(f"[{sfx_index}:a]asplit={len(moments)}{split_labels}")
             for i, moment in enumerate(moments):
-                delay_ms = int(moment * 1000)
+                # Video timestamps are source-relative; convert to the sped-up output clock.
+                delay_ms = int((moment / float(playback_speed)) * 1000)
                 graph_parts.append(
                     f"[sfxsrc{i}]atrim=duration=1.25,asetpts=PTS-STARTPTS,"
                     f"volume={float(sfx_volume):.3f},adelay={delay_ms}:all=1[sfx{i}]"
