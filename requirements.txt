@@ -10,4 +10,4 @@ imageio-ffmpeg>=0.5,<1
 rembg[cpu]>=2.0.67,<3
 faster-whisper>=1.2.1,<2
 av>=11,<19
-opencv-python-headless>=4.10,<5
+opencv-python-headless>=4.10,<4.12
