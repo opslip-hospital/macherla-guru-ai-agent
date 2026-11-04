@@ -93,9 +93,10 @@ def _retime_srt(path: Path, speed: float) -> Path:
         s, ms = divmod(remainder, 1000)
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
-    target = path.with_name(path.stem + "_retimed.srt")
-    target.write_text(pattern.sub(convert, content), encoding="utf-8")
-    return target
+    # Rewrite the temporary uploaded SRT in place. This avoids FFmpeg/libass
+    # path-resolution failures with an adjacent generated subtitle file.
+    path.write_text(pattern.sub(convert, content), encoding="utf-8")
+    return path
 
 
 def render_comedy_edit(
