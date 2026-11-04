@@ -24,6 +24,15 @@ jobs:
         run: python -m pip install requests
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
+      - name: Build isolated Hugging Face Space bundle
+        run: python gpu_worker/build_space_bundle.py --output ./dist/macherla-guru-hf-space
+      - name: Upload Space source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: macherla-guru-hf-space
+          path: dist/macherla-guru-hf-space/
+          if-no-files-found: error
+          retention-days: 14
       - name: Check ZIP and hashing standard library imports
         run: python -c "import hashlib, io, json, re, uuid, zipfile"
       - name: Validate GPU worker requirements
