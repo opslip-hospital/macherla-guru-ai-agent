@@ -8,20 +8,39 @@ sdk_version: 5.49.1
 app_file: app.py
 pinned: false
 ---
+
 # Macherla Guru AI Video Worker
 
-This Space is a **preflight prototype**, not a video generator yet. The `app.py` file is the Gradio entry point.
+This is an isolated GPU-worker prototype. It is **not deployed and has not rendered a real video yet**. The `app.py` file is the Gradio entry point.
 
-It validates a source clip, a character reference image and a Telugu story prompt. Its optional GPU check reports the allocated device and VRAM. It does not download model weights or connect the UI to the renderer yet. Isolated Wan2.2 runners now exist for character animation/replacement (Animate-14B) and prompt-driven new scene generation (TI2V-5B). They execute only when explicitly called, use bounded timeouts, and verify the MP4 container. Telugu speech synthesis and lip-sync are not implemented.
+## UI paths
 
-## Hardware
-For an initial Wan2.2 Animate-14B experiment, the project needs a compatible GPU allocation and enough free VRAM. A GPU being visible is not proof that the model will load. Do not enable paid hardware without explicit approval.
+- **New scene:** Wan2.2 TI2V-5B text-to-video or image-to-video runner.
+- **Animate / replace character:** Wan2.2 Animate-14B runner using an uploaded driving video and character reference image.
+- **Preflight:** validates source files and displays a job manifest.
+- **GPU status:** checks whether CUDA hardware is visible.
 
-## Next integration steps
-1. Add Wan2.2 official preprocessing and inference in an isolated runtime.
-2. Test a tiny clip in animation mode.
-3. Add character replacement.
-4. Add a separate text/image-to-video scene generation stage for story-driven new shots.
-5. Add Telugu TTS / recorded dialogue, lip-sync, audio mix and MP4 validation.
+Both generation paths are connected to guarded runners. They use argument arrays (not shell commands), bounded execution time, and MP4 container validation. The UI currently reserves up to 120 seconds per GPU call; that may be too short for model loading or inference.
+
+## Not ready to deploy as a working generator
+
+The Space still needs:
+1. The official Wan2.2 source repository and compatible Python dependencies.
+2. The TI2V-5B and/or Animate-14B model checkpoints stored or mounted in the Space.
+3. Correct environment paths: `WAN_REPO_PATH`, `WAN_TI2V_CHECKPOINT`, and/or `WAN_ANIMATE_CHECKPOINT`.
+4. A compatible GPU allocation with sufficient free VRAM and runtime.
+
+No model weights are downloaded automatically. Do not enable paid hardware or credits without explicit approval. A visible GPU does not prove that a specific model will load or finish.
+
+## Known limitations
+
+- The current TI2V test is deliberately short (41 frames), not a full 10-second story.
+- Wan2.2 TI2V/Animate models generate silent video; they do not create Telugu dialogue audio.
+- Telugu TTS or recorded dialogue, accurate Telugu lip-sync, scene stitching, sound effects, and final audio mixing are not implemented.
+- The source-video preflight tab does not itself render a video; use the dedicated generation tabs when model configuration is complete.
+
+## Validation
+
+The GitHub Actions workflow compiles the Python modules and runs unit tests. Passing CI checks verifies code syntax and adapter tests only; it does not verify GPU inference or rendered video.
 
 No access tokens or secrets belong in this repository.
