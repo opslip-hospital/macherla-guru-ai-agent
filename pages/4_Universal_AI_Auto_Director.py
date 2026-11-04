@@ -6,7 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from gpu_worker.auto_director import detect_scene_changes, make_comedy_edit_decision
+from gpu_worker.auto_director import detect_scene_changes, detect_face_tracking, make_comedy_edit_decision
 from gpu_worker import comedy_edit
 from gpu_worker.auto_subtitles import SubtitleError, transcribe_to_srt
 
@@ -35,6 +35,7 @@ threshold = st.slider("Scene-change sensitivity", 0.10, 0.60, 0.28, 0.02)
 music = st.file_uploader("Optional background music (MP3/WAV/AAC)", type=["mp3", "wav", "aac", "m4a"])
 subtitle = st.file_uploader("Optional subtitles (SRT)", type=["srt"])
 auto_subtitles = st.checkbox("Auto-generate subtitles from speech (Whisper)", value=False)
+face_tracking = st.checkbox("Enable face-aware camera tracking (experimental)", value=True)
 subtitle_language = st.selectbox("Speech language", ["Auto detect", "Telugu", "English", "Hindi", "Tamil", "Kannada", "Malayalam"])
 whisper_model = st.selectbox("Whisper model (CPU)", ["tiny", "base", "small"], index=0)
 music_volume = st.slider("Background music volume", 0.0, 0.35, 0.12, 0.01)
@@ -61,6 +62,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
         transcript_path = root / "speech_transcript.json"
         speech_points = []
         transcript_segments = []
+        face_track_points = []
         try:
             if auto_subtitles and subtitle is None:
                 language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
@@ -72,12 +74,18 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     transcript_segments = json.loads(transcript_path.read_text(encoding="utf-8"))
             with st.spinner("1/3 వీడియో సీన్లను విశ్లేషిస్తున్నాం…"):
                 cuts = detect_scene_changes(str(source), threshold=threshold, max_duration=duration)
+                if face_tracking:
+                    face_track_points = detect_face_tracking(str(source), aspect_ratio=ratio_value, max_duration=duration)
                 plan = make_comedy_edit_decision(cuts, duration=duration)
                 plan["speech_punch_points"] = speech_points
+                plan["face_tracking_points"] = face_track_points
+                plan["face_tracking_detected"] = bool(face_track_points)
                 plan["note"] += " Speech phrase starts can also guide punch zoom timing when Whisper subtitles are enabled."
                 punch_times = sorted({round(float(x), 3) for x in cuts + speech_points if 0.15 < float(x) < float(duration)})
             st.subheader("🎬 Auto Director Edit Plan")
             st.write(f"గుర్తించిన visual scene changes: {len(cuts)}")
+            if face_tracking:
+                st.write(f"Face tracking samples: {len(face_track_points)}" if face_track_points else "ముఖాలు గుర్తించలేదు; center crop వాడబడుతుంది.")
             if cuts:
                 st.write("Dynamic punch points: " + ", ".join(f"{x:.2f}s" for x in cuts))
             else:
@@ -94,7 +102,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     music_file=str(music_path) if music_path else None,
                     music_volume=music_volume, max_duration=duration, punch_times=punch_times,
                     subtitle_file=str(subtitle_path) if subtitle_path else None,
-                    playback_speed=playback_speed,
+                    playback_speed=playback_speed, face_track_points=face_track_points,
                 )
             data = Path(rendered).read_bytes()
             st.success("3/3 వీడియో ఎడిటింగ్ పూర్తయింది!")
