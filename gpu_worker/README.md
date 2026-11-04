@@ -15,13 +15,13 @@ This is an isolated GPU-worker prototype. It is **not deployed and has not rende
 
 ## UI paths
 
-- **Telugu voice:** creates a separate MP3 using the online Edge TTS service, with Telugu male (Mohan) and female (Shruti) voices.
+- **Telugu voice:** creates a separate MP3 using the online Edge TTS service, with Telugu male (Mohan) and female (Shruti) voices.\n- **Character dialogue soundtrack:** accepts speaker-labelled Telugu lines (`Speaker|Voice|Dialogue`), synthesizes each line, inserts short pauses, and joins them into one WAV soundtrack using FFmpeg.
 - **New scene:** Wan2.2 TI2V-5B text-to-video or image-to-video runner.
 - **Animate / replace character:** Wan2.2 Animate-14B runner using an uploaded driving video and character reference image.
 - **Preflight:** validates source files and displays a job manifest.
 - **GPU status:** checks whether CUDA hardware is visible.
 
-The Telugu voice tab is independent of GPU inference. It needs an internet connection and the Edge TTS online service; availability and service behavior may change. It creates an MP3 only, not lip-sync or a finished video soundtrack.
+The Telugu voice and dialogue soundtrack tabs are independent of GPU inference. They need an internet connection and the Edge TTS online service; availability and service behavior may change. The soundtrack builder creates a sequential WAV of dialogue lines, but it does not perform lip-sync or mux the audio into a generated video.
 
 ## Not ready to deploy as a working video generator
 
@@ -37,7 +37,7 @@ No model weights are downloaded automatically. Do not enable paid hardware or cr
 
 - The current TI2V test is deliberately short (41 frames), not a full 10-second story.
 - Wan2.2 TI2V/Animate models generate silent video; they do not create Telugu dialogue audio.
-- Telugu TTS is a separate MP3 output; accurate Telugu lip-sync, scene stitching, sound effects, and final audio mixing are not implemented.
+- Telugu TTS can create separate MP3 lines and a combined WAV dialogue track; accurate Telugu lip-sync, scene stitching, sound effects, and automatic audio/video muxing are not implemented.
 - The source-video preflight tab does not itself render a video; use the dedicated generation tabs when model configuration is complete.
 
 ## Validation
