@@ -52,7 +52,7 @@ def build_mux_command(
     return base + [
         "-map", "0:v:0", "-map", "1:a:0",
         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-        "-shortest", "-movflags", "+faststart", str(output),
+        "-movflags", "+faststart", str(output),
     ]
 
 
