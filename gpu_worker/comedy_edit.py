@@ -128,6 +128,8 @@ def render_comedy_edit(
     punch_times: list[float] | None = None,
     playback_speed: float = 1.0,
     face_track_points: list[dict] | None = None,
+    sfx_file: str | None = None,
+    sfx_volume: float = 0.22,
 ) -> str:
     source, output = Path(input_video), Path(output_video)
     if not source.is_file() or source.stat().st_size == 0:
@@ -136,10 +138,14 @@ def render_comedy_edit(
         raise ComedyEditError("Choose a clip duration from 1 to 20 seconds.")
     if not 0 <= float(music_volume) <= 0.35:
         raise ComedyEditError("Background music volume must be between 0 and 0.35.")
+    if not 0.0 <= float(sfx_volume) <= 0.8:
+        raise ComedyEditError("Sound-effect volume must be between 0 and 0.8.")
     if not 0.75 <= float(playback_speed) <= 1.25:
         raise ComedyEditError("Playback speed must be between 0.75x and 1.25x.")
     if music_file and (not Path(music_file).is_file() or Path(music_file).stat().st_size == 0):
         raise ComedyEditError("Background music file is missing or empty.")
+    if sfx_file and (not Path(sfx_file).is_file() or Path(sfx_file).stat().st_size == 0):
+        raise ComedyEditError("Sound-effect file is missing or empty.")
     if subtitle_file and (not Path(subtitle_file).is_file() or Path(subtitle_file).stat().st_size == 0):
         raise ComedyEditError("Subtitle SRT file is missing or empty.")
     source_duration = _probe_duration(source)
@@ -156,21 +162,50 @@ def render_comedy_edit(
         escaped = str(subtitle_path.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
         video_filter += f",subtitles={escaped}:force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
+    music_index = None
+    sfx_index = None
     if music_file:
+        music_index = 1
         cmd += ["-stream_loop", "-1", "-i", str(music_file)]
+    if sfx_file:
+        sfx_index = 1 + int(bool(music_file))
+        cmd += ["-i", str(sfx_file)]
+
+    if music_file or sfx_file:
+        graph_parts = [f"[0:v]{video_filter}[v]"]
+        audio_labels = []
         if has_original_audio:
-            graph = (
-                f"[0:v]{video_filter}[v];"
-                f"[0:a]atempo={float(playback_speed):.3f},volume=0.88,afade=t=in:st=0:d=0.15,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[original];"
-                f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[music];"
-                "[original][music]amix=inputs=2:duration=first:dropout_transition=1[a]"
+            graph_parts.append(
+                f"[0:a]atempo={float(playback_speed):.3f},volume=0.88,"
+                f"afade=t=in:st=0:d=0.15,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[original]"
             )
-        else:
-            graph = (
-                f"[0:v]{video_filter}[v];"
-                f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[a]"
+            audio_labels.append("[original]")
+        elif not music_file and sfx_file:
+            graph_parts.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={output_duration:.3f}[silence]")
+            audio_labels.append("[silence]")
+        if music_file:
+            graph_parts.append(
+                f"[{music_index}:a]volume={float(music_volume):.3f},"
+                f"afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[music]"
             )
-        cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
+            audio_labels.append("[music]")
+        if sfx_file:
+            moments = sorted({max(0.0, float(t)) for t in (punch_times or []) if 0 <= float(t) < output_duration})[:8]
+            if not moments:
+                moments = [0.5]
+            split_labels = "".join(f"[sfxsrc{i}]" for i in range(len(moments)))
+            graph_parts.append(f"[{sfx_index}:a]asplit={len(moments)}{split_labels}")
+            for i, moment in enumerate(moments):
+                delay_ms = int(moment * 1000)
+                graph_parts.append(
+                    f"[sfxsrc{i}]atrim=duration=1.25,asetpts=PTS-STARTPTS,"
+                    f"volume={float(sfx_volume):.3f},adelay={delay_ms}:all=1[sfx{i}]"
+                )
+                audio_labels.append(f"[sfx{i}]")
+        graph_parts.append(
+            "".join(audio_labels) + f"amix=inputs={len(audio_labels)}:duration=first:dropout_transition=1[a]"
+        )
+        cmd += ["-filter_complex", ";".join(graph_parts), "-map", "[v]", "-map", "[a]"]
     elif has_original_audio:
         cmd += [
             "-vf", video_filter, "-map", "0:v:0", "-map", "0:a:0",
