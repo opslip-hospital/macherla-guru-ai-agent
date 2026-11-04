@@ -89,9 +89,13 @@ jobs:
               import sys
               import types
               from gpu_worker.auto_subtitles import transcribe_to_srt
+              class FakeWord:
+                  def __init__(self, start, end, word):
+                      self.start, self.end, self.word = start, end, word
               class FakeSegment:
                   def __init__(self, start, end, text):
                       self.start, self.end, self.text = start, end, text
+                      self.words = [FakeWord(start, min(end, start + 0.25), text.split()[0])]
               class FakeWhisperModel:
                   def __init__(self, *args, **kwargs):
                       pass
@@ -103,16 +107,20 @@ jobs:
               transcript_srt = root / "speech.srt"
               punch_json = root / "speech-points.json"
               transcript_json = root / "transcript.json"
+              word_json = root / "word-timestamps.json"
               transcribe_to_srt(str(dummy_input), str(transcript_srt),
                                 punch_points_path=str(punch_json),
-                                transcript_path=str(transcript_json))
+                                transcript_path=str(transcript_json),
+                                word_timestamps_path=str(word_json))
               import json
               segments = json.loads(transcript_json.read_text(encoding="utf-8"))
               points = json.loads(punch_json.read_text(encoding="utf-8"))
+              word_times = json.loads(word_json.read_text(encoding="utf-8"))
               assert len(segments) == 2 and segments[0]["text"] == "నమస్కారం మావా"
+              assert len(word_times) == 2 and word_times[0]["word"] == "నమస్కారం"
               assert points == [0.25, 1.2]
               assert "నమస్కారం మావా" in transcript_srt.read_text(encoding="utf-8")
-              print("PASS Whisper transcript, subtitle timing, and speech punch-point export")
+              print("PASS Whisper transcript, word timing, subtitle timing, and speech punch-point export")
               # Mock the Gemini Files upload + video understanding API without a paid API call.
               from gpu_worker import gemini_director
               class FakeResponse:
