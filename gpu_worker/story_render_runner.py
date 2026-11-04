@@ -64,7 +64,6 @@ def render_story_to_mp4(
     output_dir: str,
     reference_image: str | None = None,
     render_timeout_seconds: int = 2700,
-    keep_original_audio: bool = False,
 ) -> Path:
     """Render all scenes sequentially and return the assembled MP4 path.
 
@@ -133,7 +132,7 @@ def render_story_to_mp4(
             video_file=str(silent_video),
             audio_file=str(soundtrack),
             output_file=str(work / "macherla_guru_story_final.mp4"),
-            keep_original_audio=keep_original_audio,
+            keep_original_audio=False,
             original_volume=0.18,
             dialogue_volume=1.0,
             timeout_seconds=300,
