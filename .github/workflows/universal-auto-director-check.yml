@@ -71,6 +71,7 @@ jobs:
                   ("voiced-music-srt-slow", voiced, {"music_file": str(music), "subtitle_file": str(srt), "playback_speed": 0.85}),
                   ("silent-with-music", silent, {"music_file": str(music)}),
                   ("voiced-timed-sfx", voiced, {"sfx_file": str(sfx), "sfx_volume": 0.2, "punch_times": [0.5, 1.6]}),
+                  ("voiced-music-sfx-slow", voiced, {"music_file": str(music), "sfx_file": str(sfx), "sfx_volume": 0.2, "playback_speed": 0.85, "punch_times": [0.5, 1.6]}),
                   ("silent-sfx-only", silent, {"sfx_file": str(sfx), "sfx_volume": 0.25, "punch_times": [0.75]}),
               ]
               for label, source, options in cases:
