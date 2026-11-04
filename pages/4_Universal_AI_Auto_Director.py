@@ -1,6 +1,7 @@
 import importlib
 import json
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import streamlit as st
 from gpu_worker.auto_director import detect_scene_changes, detect_face_tracking, make_comedy_edit_decision
 from gpu_worker import comedy_edit
 from gpu_worker.auto_subtitles import SubtitleError, transcribe_to_srt
+from gpu_worker.gemini_director import GeminiDirectorError, analyze_video_with_gemini
 
 # Streamlit multipage sessions can retain imported modules after a page hot-reload.
 # Reload the editor module so the UI and renderer always use the same function signature.
@@ -36,6 +38,7 @@ music = st.file_uploader("Optional background music (MP3/WAV/AAC)", type=["mp3",
 subtitle = st.file_uploader("Optional subtitles (SRT)", type=["srt"])
 auto_subtitles = st.checkbox("Auto-generate subtitles from speech (Whisper)", value=False)
 face_tracking = st.checkbox("Enable face-aware camera tracking (experimental)", value=True)
+gemini_analysis = st.checkbox("Gemini AI story + dialogue analysis (uses API quota)", value=False)
 subtitle_language = st.selectbox("Speech language", ["Auto detect", "Telugu", "English", "Hindi", "Tamil", "Kannada", "Malayalam"])
 whisper_model = st.selectbox("Whisper model (CPU)", ["tiny", "base", "small"], index=0)
 music_volume = st.slider("Background music volume", 0.0, 0.35, 0.12, 0.01)
@@ -62,7 +65,15 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
         speech_points = []
         transcript_segments = []
         face_track_points = []
+        gemini_result = {"summary": "", "moments": []}
         try:
+            if gemini_analysis:
+                try:
+                    gemini_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+                except Exception:
+                    gemini_key = os.getenv("GEMINI_API_KEY", "")
+                with st.spinner("Gemini వీడియోలో కథ, మాటలు, comedy/reaction moments విశ్లేషిస్తోంది…"):
+                    gemini_result = analyze_video_with_gemini(str(source), gemini_key, mime_type=video.type or "video/mp4")
             if auto_subtitles and subtitle is None:
                 language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
                 with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):
@@ -79,12 +90,19 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 plan["speech_punch_points"] = speech_points
                 plan["face_tracking_points"] = face_track_points
                 plan["face_tracking_detected"] = bool(face_track_points)
+                plan["gemini_story_summary"] = gemini_result.get("summary", "")
+                plan["gemini_director_moments"] = gemini_result.get("moments", [])
                 plan["note"] += " Speech phrase starts can also guide punch zoom timing when Whisper subtitles are enabled."
-                punch_times = sorted({round(float(x), 3) for x in cuts + speech_points if 0.15 < float(x) < float(duration)})
+                gemini_times = [float(item["time"]) for item in gemini_result.get("moments", [])]
+                punch_times = sorted({round(float(x), 3) for x in cuts + speech_points + gemini_times if 0.15 < float(x) < float(duration)})
             st.subheader("🎬 Auto Director Edit Plan")
             st.write(f"గుర్తించిన visual scene changes: {len(cuts)}")
             if face_tracking:
                 st.write(f"Face tracking samples: {len(face_track_points)}" if face_track_points else "ముఖాలు గుర్తించలేదు; center crop వాడబడుతుంది.")
+            if gemini_result.get("summary"):
+                st.info("Gemini story understanding: " + gemini_result["summary"])
+                for moment in gemini_result.get("moments", []):
+                    st.write("{:.2f}s — {}: {}".format(moment["time"], moment["kind"], moment["reason"]))
             if cuts:
                 st.write("Dynamic punch points: " + ", ".join(f"{x:.2f}s" for x in cuts))
             else:
@@ -116,7 +134,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 data=json.dumps(plan, ensure_ascii=False, indent=2).encode("utf-8"),
                 file_name="universal-edit-plan.json", mime="application/json",
             )
-        except (ComedyEditError, SubtitleError, OSError, ValueError) as exc:
+        except (ComedyEditError, SubtitleError, GeminiDirectorError, OSError, ValueError) as exc:
             st.error(str(exc))
         except Exception as exc:
             # Keep the full traceback in Streamlit Cloud logs while showing a
