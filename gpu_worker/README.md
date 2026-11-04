@@ -31,6 +31,19 @@ This is an isolated GPU-worker prototype. It is **not deployed and has not rende
 
 The Telugu voice and dialogue soundtrack tabs are independent of GPU inference. They need an internet connection and the Edge TTS online service; availability and service behavior may change. The soundtrack builder creates a sequential WAV of dialogue lines. The video + dialogue tab combines that track with a rendered MP4 and can optionally mix the original source audio. Neither feature performs lip-sync.
 
+
+### Running the full story on a persistent GPU host
+
+The sequential runner can be started from the command line after the Wan2.2 repository and TI2V-5B weights have been installed or mounted by the operator:
+
+```bash
+export WAN_REPO_PATH=/path/to/Wan2.2
+export WAN_TI2V_CHECKPOINT=/path/to/Wan2.2-TI2V-5B
+python render_story.py --manifest render_manifest.json --reference pj-babu.png --output-dir ./rendered
+```
+
+The CLI writes the generated scene clips, silent stitched story, dialogue WAV, and final MP4 into the output directory. This is for a persistent GPU machine with enough VRAM and runtime; it is not a free unlimited cloud endpoint. It does not install weights or configure a GPU automatically.
+
 ## Not ready to deploy as a working video generator
 
 The Space still needs:
