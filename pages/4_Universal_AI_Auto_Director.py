@@ -132,5 +132,5 @@ st.markdown(
     "9:16/16:9/1:1 reframing, contrast/saturation/sharpen polish, original dialogue preservation, "
     "optional low-volume background music, adjustable 0.85x–1.15x speed, smooth fade-in/fade-out, optional SRT subtitle burn-in, final MP4 + edit-plan export. "
     "ఇంకా పూర్తి కాలేనివి: Telugu speech understanding, automatic subtitle timing (Whisper option added), face tracking, "
-    "reaction-shot insertion, per-word sound effects, AI lip-sync, new scene generation."
+    "per-word sound effects, AI lip-sync, new scene generation."
 )
