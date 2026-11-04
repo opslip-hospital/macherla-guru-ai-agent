@@ -60,6 +60,7 @@ def render_comedy_edit(
     max_duration: float = 20.0,
     timeout_seconds: int = 900,
     punch_times: list[float] | None = None,
+    playback_speed: float = 1.0,
 ) -> str:
     source, output = Path(input_video), Path(output_video)
     if not source.is_file() or source.stat().st_size == 0:
@@ -68,11 +69,14 @@ def render_comedy_edit(
         raise ComedyEditError("Choose a clip duration from 1 to 20 seconds.")
     if not 0 <= float(music_volume) <= 0.35:
         raise ComedyEditError("Background music volume must be between 0 and 0.35.")
+    if not 0.75 <= float(playback_speed) <= 1.25:
+        raise ComedyEditError("Playback speed must be between 0.75x and 1.25x.")
     if music_file and (not Path(music_file).is_file() or Path(music_file).stat().st_size == 0):
         raise ComedyEditError("Background music file is missing or empty.")
     if subtitle_file and (not Path(subtitle_file).is_file() or Path(subtitle_file).stat().st_size == 0):
         raise ComedyEditError("Subtitle SRT file is missing or empty.")
     video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times)
+    video_filter += f",setpts=PTS/{float(playback_speed):.3f},fade=t=in:st=0:d=0.25,fade=t=out:st={max(0.0, float(max_duration)-0.35):.3f}:d=0.35"
     if subtitle_file:
         escaped = str(Path(subtitle_file).resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
         video_filter += f",subtitles=filename='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
@@ -84,18 +88,18 @@ def render_comedy_edit(
         if has_original_audio:
             graph = (
                 f"[0:v]{video_filter}[v];"
-                f"[0:a]volume=0.88[original];"
-                f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[music];"
+                f"[0:a]atempo={float(playback_speed):.3f},volume=0.88,afade=t=in:st=0:d=0.15,afade=t=out:st={max(0.0, float(max_duration)-0.25):.3f}:d=0.25[original];"
+                f"[1:a]atempo={float(playback_speed):.3f},volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[music];"
                 "[original][music]amix=inputs=2:duration=first:dropout_transition=1[a]"
             )
         else:
             graph = (
                 f"[0:v]{video_filter}[v];"
-                f"[1:a]volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[a]"
+                f"[1:a]atempo={float(playback_speed):.3f},volume={float(music_volume):.3f},afade=t=in:st=0:d=0.6[a]"
             )
         cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
     else:
-        cmd += ["-vf", video_filter, "-map", "0:v:0", "-map", "0:a?"]
+        cmd += ["-vf", video_filter, "-map", "0:v:0", "-map", "0:a?", "-af", f"atempo={float(playback_speed):.3f},afade=t=in:st=0:d=0.15,afade=t=out:st={max(0.0, float(max_duration)-0.25):.3f}:d=0.25"]
     cmd += [
         "-t", str(float(max_duration)), "-c:v", "libx264", "-preset", "veryfast",
         "-crf", "19", "-r", "30", "-c:a", "aac", "-b:a", "192k",
