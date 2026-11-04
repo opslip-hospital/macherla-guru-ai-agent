@@ -134,8 +134,10 @@ def render_comedy_edit(
     video_filter += f",setpts=PTS/{float(playback_speed):.3f},fade=t=in:st=0:d=0.25,fade=t=out:st={fade_out_start:.3f}:d=0.35"
     if subtitle_file:
         subtitle_path = _retime_srt(Path(subtitle_file), float(playback_speed))
+        if not subtitle_path.is_file():
+            raise ComedyEditError("Retimed subtitle file could not be created.")
         escaped = str(subtitle_path.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-        video_filter += f",subtitles='{escaped}':force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
+        video_filter += f",subtitles={escaped}:force_style='FontName=Noto Sans Telugu,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=55'"
     cmd = [_ffmpeg_path(), "-y", "-i", str(source)]
     if music_file:
         cmd += ["-stream_loop", "-1", "-i", str(music_file)]
