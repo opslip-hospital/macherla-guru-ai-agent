@@ -46,7 +46,7 @@ The CLI writes the generated scene clips, silent stitched story, dialogue WAV, a
 
 ## Not ready to deploy as a working video generator
 
-The Space still needs:
+The Space source bundle is now assembled by the GitHub Actions workflow and uploaded as a 14-day workflow artifact. Downloading that artifact only prepares source files; it does not create or deploy a Hugging Face Space. The Space still needs:
 1. The official Wan2.2 source repository and compatible Python dependencies.
 2. The TI2V-5B and/or Animate-14B model checkpoints stored or mounted in the Space.
 3. Correct environment paths: `WAN_REPO_PATH`, `WAN_TI2V_CHECKPOINT`, and/or `WAN_ANIMATE_CHECKPOINT`.
@@ -56,7 +56,7 @@ No model weights are downloaded automatically. Do not enable paid hardware or cr
 
 ## Known limitations
 
-- The UI's current TI2V test is deliberately short (41 frames, about 1.7 seconds at 24 FPS), not a full 10-second story. A separate sequential runner now connects manifest jobs to generation, stitching and audio assembly for a persistent configured GPU runtime, but it has not been run against real model weights and is not yet exposed as a one-click Space action.
+- The UI's current TI2V test is deliberately short (41 frames, about 1.7 seconds at 24 FPS), not a full 10-second story. A separate sequential runner now connects manifest jobs to generation, stitching and audio assembly for a persistent configured GPU runtime, but it has not been run against real model weights.
 - Wan2.2 TI2V/Animate models generate silent video; they do not create Telugu dialogue audio.
 - Telugu TTS can create separate MP3 lines and a combined WAV dialogue track; the separate mux tab can add the soundtrack to MP4. Accurate Telugu lip-sync and sound effects are not implemented. Basic scene stitching is implemented, but automatic scene selection, transition effects, and story continuity checks are not.
 - The source-video preflight tab does not itself render a video; use the dedicated generation tabs when model configuration is complete.
