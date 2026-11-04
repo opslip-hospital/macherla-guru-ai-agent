@@ -50,7 +50,7 @@ class GeminiStoryPlannerTests(unittest.TestCase):
     def test_invalid_plan_timing_is_rejected(self):
         plan = self._valid_plan()
         plan["scenes"][0]["end_seconds"] = 15
-        with patch("gemini_story_planner.requests.post", return_value=self._response(plan)):
+        with patch("gpu_worker.gemini_story_planner.requests.post", return_value=self._response(plan)):
             with self.assertRaises(GeminiPlannerError):
                 generate_story_plan("యముడు వస్తాడు", api_key="test-key")
 
