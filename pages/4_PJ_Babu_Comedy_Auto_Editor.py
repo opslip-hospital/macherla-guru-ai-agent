@@ -22,6 +22,7 @@ intensity = st.select_slider("Comedy punch intensity", options=["Medium", "High"
 duration = st.slider("Maximum output duration (seconds)", 1, 20, 20)
 threshold = st.slider("Scene-change sensitivity", 0.10, 0.60, 0.28, 0.02)
 music = st.file_uploader("Optional background music (MP3/WAV/AAC)", type=["mp3", "wav", "aac", "m4a"])
+subtitle = st.file_uploader("Optional Telugu subtitles (SRT)", type=["srt"])
 music_volume = st.slider("Background music volume", 0.0, 0.35, 0.12, 0.01)
 st.caption(
     "Scene analysis detects visual changes only; it does not understand Telugu dialogue, "
@@ -37,6 +38,10 @@ if st.button("🔥 Auto Director + Comedy Edit", type="primary", disabled=video 
         if music is not None:
             music_path = root / ("music" + Path(music.name).suffix.lower())
             music_path.write_bytes(music.getvalue())
+        subtitle_path = None
+        if subtitle is not None:
+            subtitle_path = root / "captions.srt"
+            subtitle_path.write_bytes(subtitle.getvalue())
         output = root / "pj_babu_comedy_final.mp4"
         try:
             with st.spinner("1/3 వీడియో సీన్లను విశ్లేషిస్తున్నాం…"):
@@ -54,6 +59,7 @@ if st.button("🔥 Auto Director + Comedy Edit", type="primary", disabled=video 
                     str(source), str(output), aspect_ratio=ratio_value, intensity=intensity,
                     music_file=str(music_path) if music_path else None,
                     music_volume=music_volume, max_duration=duration, punch_times=cuts,
+                    subtitle_file=str(subtitle_path) if subtitle_path else None,
                 )
             data = Path(rendered).read_bytes()
             st.success("3/3 Auto comedy edit పూర్తయింది!")
@@ -75,7 +81,7 @@ st.divider()
 st.markdown(
     "**ఈ వెర్షన్‌లో:** visual scene-change detection, scene-aware punch zooms, "
     "9:16/16:9/1:1 reframing, contrast/saturation/sharpen polish, original dialogue preservation, "
-    "optional low-volume background music, final MP4 + edit-plan export. "
+    "optional low-volume background music, optional SRT subtitle burn-in, final MP4 + edit-plan export. "
     "ఇంకా పూర్తి కాలేనివి: Telugu speech understanding, automatic subtitle timing, face tracking, "
     "reaction-shot insertion, per-word sound effects, AI lip-sync, new scene generation."
 )
