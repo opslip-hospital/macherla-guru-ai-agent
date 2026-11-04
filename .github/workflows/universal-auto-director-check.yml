@@ -153,7 +153,10 @@ jobs:
                   assert analysis["summary"] == "Telugu comedy clip"
                   assert analysis["moments"][0]["time"] == 1.25
                   assert any("/models/gemini-3.8-flash:generateContent" in call[0] for call in calls)
-                  print("PASS mocked Gemini Files upload and Gemini 3.8 Flash video analysis")
+                  generate_call = next(call for call in calls if "/models/gemini-3.8-flash:generateContent" in call[0])
+                  video_part = generate_call[1]["json"]["contents"][0]["parts"][0]
+                  assert video_part.get("media_processing") == "AGENTIC"
+                  print("PASS mocked Gemini Files upload, agentic video analysis, and director moments")
               finally:
                   gemini_director.requests.post = original_post
 
