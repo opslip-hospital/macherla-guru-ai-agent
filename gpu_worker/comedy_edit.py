@@ -20,8 +20,8 @@ def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", pun
     if intensity not in {"Medium", "High", "Extreme"}:
         raise ComedyEditError("Intensity must be Medium, High, or Extreme.")
     width, height = sizes[aspect_ratio]
-    zoom = {"Medium": "1.14", "High": "1.20", "Extreme": "1.26"}[intensity]
-    punch_zoom = {"Medium": "1.22", "High": "1.30", "Extreme": "1.38"}[intensity]
+    zoom = {"Medium": "1.16", "High": "1.23", "Extreme": "1.31"}[intensity]
+    punch_zoom = {"Medium": "1.25", "High": "1.34", "Extreme": "1.42"}[intensity]
     # Noticeable 1.8-second push/pull cycle with cosine easing: fast but fluid.
     base_cycle_frames = 54  # 1.8 seconds at 30 fps
     base_expr = f"1+({zoom}-1)*(0.5-0.5*cos(2*PI*mod(on,{base_cycle_frames})/{base_cycle_frames}))"
