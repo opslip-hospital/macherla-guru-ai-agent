@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import sys
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,7 +56,8 @@ class TeluguTTSTests(unittest.TestCase):
                 async def save(self, path):
                     await fake_save(path)
 
-            with patch("edge_tts.Communicate", FakeCommunicate):
+            fake_module = SimpleNamespace(Communicate=FakeCommunicate)
+            with patch.dict(sys.modules, {"edge_tts": fake_module}):
                 result = synthesize_telugu_speech(
                     text="నమస్కారం మావా",
                     voice="Mohan (పురుష వాయిస్)",
