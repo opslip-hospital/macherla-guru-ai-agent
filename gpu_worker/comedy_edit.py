@@ -73,7 +73,7 @@ def _has_audio_stream(path: Path) -> bool:
         )
     except subprocess.TimeoutExpired as exc:
         raise ComedyEditError("Checking the original audio track timed out. Try a shorter video.") from exc
-    return bool(re.search(r"Stream #\\d+:\\d+.*Audio:", probe.stderr or ""))
+    return "Audio:" in (probe.stderr or "") and "Stream #" in (probe.stderr or "")
 
 
 def _retime_srt(path: Path, speed: float) -> Path:
