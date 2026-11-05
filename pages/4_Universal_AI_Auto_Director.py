@@ -1,7 +1,6 @@
 import importlib
 import json
 import logging
-import mimetypes
 import os
 import tempfile
 from pathlib import Path
