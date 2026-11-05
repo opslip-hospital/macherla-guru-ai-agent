@@ -100,7 +100,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
                 try:
                     with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):
-                        subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model, punch_points_path=str(speech_points_path), transcript_path=str(transcript_path), word_timestamps_path=str(word_timestamps_path)))
+                        subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model, max_duration=duration, punch_points_path=str(speech_points_path), transcript_path=str(transcript_path), word_timestamps_path=str(word_timestamps_path)))
                     if speech_points_path.is_file():
                         speech_points = json.loads(speech_points_path.read_text(encoding="utf-8"))
                     if transcript_path.is_file():
