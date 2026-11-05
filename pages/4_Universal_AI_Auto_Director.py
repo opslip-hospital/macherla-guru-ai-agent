@@ -1,6 +1,7 @@
 import importlib
 import json
 import logging
+import mimetypes
 import os
 import tempfile
 from pathlib import Path
@@ -83,7 +84,8 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     gemini_key = os.getenv("GEMINI_API_KEY", "")
                 try:
                     with st.spinner("Gemini వీడియోలో కథ, మాటలు, comedy/reaction moments విశ్లేషిస్తోంది…"):
-                        gemini_result = analyze_video_with_gemini(str(source), gemini_key, mime_type=video.type or "video/mp4")
+                        detected_mime = video.type or mimetypes.guess_type(video.name)[0] or "video/mp4"
+                        gemini_result = analyze_video_with_gemini(str(source), gemini_key, mime_type=detected_mime)
                     if gemini_result.get("remote_file_cleanup") == "deleted":
                         st.success("Gemini temporary video upload was deleted after analysis.")
                     elif gemini_result.get("remote_file_cleanup") == "delete_failed":
