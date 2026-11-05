@@ -118,12 +118,16 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     for point in punch_times
                 ]
                 plan["punch_moments"] = plan["combined_director_cues"]
+                punch_cues = [{"time": float(item["time"]), "kind": str(item.get("kind", "dialogue_emphasis"))}
+                              for item in gemini_result.get("moments", [])]
+                plan["reaction_emphasis_count"] = sum(1 for item in punch_cues if item["kind"].lower() == "reaction_emphasis")
             st.subheader("🎬 Auto Director Edit Plan")
             st.write(f"గుర్తించిన visual scene changes: {len(cuts)}")
             if face_tracking:
                 st.write(f"Face tracking samples: {len(face_track_points)}" if face_track_points else "ముఖాలు గుర్తించలేదు; center crop వాడబడుతుంది.")
             if gemini_result.get("summary"):
                 st.info("Gemini story understanding: " + gemini_result["summary"])
+                st.write("Actual reaction moments detected: {}".format(plan["reaction_emphasis_count"]))
                 for moment in gemini_result.get("moments", []):
                     st.write("{:.2f}s — {}: {}".format(moment["time"], moment["kind"], moment["reason"]))
             if transcript_segments:
@@ -156,6 +160,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     subtitle_file=str(subtitle_path) if subtitle_path else None,
                     playback_speed=playback_speed, face_track_points=face_track_points,
                     sfx_file=str(sfx_path) if sfx_path else None, sfx_volume=sfx_volume,
+                    punch_cues=punch_cues,
                 )
             data = Path(rendered).read_bytes()
             st.success("3/3 వీడియో ఎడిటింగ్ పూర్తయింది!")
@@ -186,5 +191,5 @@ st.markdown(
     "optional low-volume background music and timed comedy/reaction sound-effect overlays at director punch cues, adjustable 0.85x–1.15x speed, smooth fade-in/fade-out, optional SRT subtitles, "
     "Whisper multilingual speech-to-text with transcript, word-level timing and phrase-timed punch points, optional Gemini video/story/dialogue moment analysis, timed uploaded SFX overlays, final MP4 + JSON edit-plan export. "
     "**ఇంకా అందుబాటులో లేనివి:** automatic reaction-shot insertion, per-word sound-effect selection, AI lip-sync generation, and new-scene generation. "
-    "Gemini and face tracking require real-video testing; face detection can miss stylized/cartoon characters."
+    "Gemini and face tracking require real-video testing; reaction emphasis is a stronger zoom on an existing visible reaction, not a generated reaction shot; face detection can miss stylized/cartoon characters."
 )
