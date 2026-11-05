@@ -519,7 +519,7 @@ else:
                     for part in parts if isinstance(parts, list) else []:
                         if isinstance(part, dict) and isinstance(part.get("text"), str):
                             text_parts.append(part["text"])
-                generated_text = "\\n".join(text_parts).strip()
+                generated_text = "\n".join(text_parts).strip()
                 if not generated_text:
                     raise RuntimeError("Gemini నుంచి వివరాలు రాలేదు. API response: " + json.dumps(gen_data, ensure_ascii=False)[:700])
                 generated_text = generated_text.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
