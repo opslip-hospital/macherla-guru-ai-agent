@@ -481,19 +481,34 @@ else:
                 if file_state != "ACTIVE":
                     raise RuntimeError("Gemini వీడియోను ఇంకా ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
                 ai_prompt = """Watch the supplied video carefully and create ready-to-use YouTube publishing metadata for Macherla Guru, a Telugu AI entertainment channel. Infer the actual subject, characters, actions, spoken language and mood from the video. Do not invent events, people, dialogue or claims not visible/audible. Return ONLY valid JSON with keys: title (catchy Telugu title, max 100 chars), description (natural Telugu description with a short CTA), tags (array of 12-18 relevant tags), hashtags (array of exactly 5 relevant hashtags), thumbnail_prompt (detailed 9:16 or 16:9 choice based on video, cinematic thumbnail prompt showing only actual video characters, no text), instagram_caption (curiosity hook plus exactly 5 hashtags), youtube_caption (curiosity hook plus exactly 5 hashtags), category (short label), keywords (array). Keep title and descriptions accurate to this video."""
-                gen = requests.post(
-                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
-                    headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                    json={
-                        "contents": [{"parts": [
-                            {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
-                            {"text": ai_prompt},
-                        ]}],
-                        "generationConfig": {"temperature": 0.45, "responseMimeType": "application/json"},
-                    },
-                    timeout=240,
-                )
-                gen.raise_for_status()
+                # Retry temporary Gemini capacity/service errors; keep the manual button
+                # as the only trigger so video selection never starts a surprise API call.
+                gen = None
+                for gen_attempt in range(4):
+                    gen = requests.post(
+                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+                        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                        json={
+                            "contents": [{"parts": [
+                                {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                                {"text": ai_prompt},
+                            ]}],
+                            "generationConfig": {"temperature": 0.45, "responseMimeType": "application/json"},
+                        },
+                        timeout=240,
+                    )
+                    if gen.status_code not in (429, 500, 502, 503, 504) or gen_attempt == 3:
+                        break
+                    st.warning(f"Gemini server busy ({gen.status_code}). మళ్లీ ప్రయత్నిస్తోంది... ({gen_attempt + 1}/3)")
+                    time.sleep(2 ** (gen_attempt + 1))
+                if gen is None:
+                    raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
+                if not gen.ok:
+                    try:
+                        gemini_error = gen.json().get("error", {}).get("message", gen.text)
+                    except Exception:
+                        gemini_error = gen.text
+                    raise RuntimeError(f"Gemini API ({gen.status_code}): {gemini_error}")
                 gen_data = gen.json()
                 if not isinstance(gen_data, dict):
                     raise RuntimeError("Gemini response format తప్పుగా వచ్చింది. మళ్లీ Generate చేయి.")
@@ -509,7 +524,7 @@ else:
                     for part in parts if isinstance(parts, list) else []:
                         if isinstance(part, dict) and isinstance(part.get("text"), str):
                             text_parts.append(part["text"])
-                generated_text = "\\n".join(text_parts).strip()
+                generated_text = "\n".join(text_parts).strip()
                 if not generated_text:
                     raise RuntimeError("Gemini నుంచి వివరాలు రాలేదు. API response: " + json.dumps(gen_data, ensure_ascii=False)[:700])
                 generated_text = generated_text.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
