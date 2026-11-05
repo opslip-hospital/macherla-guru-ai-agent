@@ -210,7 +210,9 @@ def render_comedy_edit(
                 audio_labels.append("[music]")
         if sfx_file:
             source_window = min(source_duration, float(max_duration) * float(playback_speed))
-            moments = sorted({max(0.0, float(t)) for t in (punch_times or []) if 0 <= float(t) < source_window})[:8]
+            cue_times = [item.get("time", 0) for item in (punch_cues or []) if isinstance(item, dict)]
+            requested_times = list(punch_times or []) + cue_times
+            moments = sorted({max(0.0, float(t)) for t in requested_times if 0 <= float(t) < source_window})[:8]
             if not moments:
                 moments = [0.5]
             split_labels = "".join(f"[sfxsrc{i}]" for i in range(len(moments)))
