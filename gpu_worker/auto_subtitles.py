@@ -14,6 +14,7 @@ def transcribe_to_srt(
     *,
     language: str | None = None,
     model_size: str = "tiny",
+    max_duration: float = 20.0,
     device: str = "cpu",
     compute_type: str = "int8",
     punch_points_path: str | None = None,
@@ -25,6 +26,8 @@ def transcribe_to_srt(
         raise SubtitleError("Input video/audio file is missing or empty.")
     if model_size not in {"tiny", "base", "small"}:
         raise SubtitleError("Choose tiny, base, or small Whisper model.")
+    if not 1 <= float(max_duration) <= 20:
+        raise SubtitleError("Speech analysis duration must be between 1 and 20 seconds.")
     if language not in {None, "te", "en", "hi", "ta", "kn", "ml"}:
         raise SubtitleError("Unsupported language selection.")
     try:
@@ -35,7 +38,7 @@ def transcribe_to_srt(
         model = WhisperModel(model_size, device=device, compute_type=compute_type)
         segments, _info = model.transcribe(
             str(source), language=language, beam_size=1, vad_filter=True,
-            word_timestamps=True,
+            word_timestamps=True, clip_timestamps=[0.0, float(max_duration)],
         )
         def stamp(seconds: float) -> str:
             ms = max(0, int(round(float(seconds) * 1000)))
