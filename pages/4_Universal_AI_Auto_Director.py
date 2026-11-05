@@ -82,6 +82,10 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     gemini_key = os.getenv("GEMINI_API_KEY", "")
                 with st.spinner("Gemini వీడియోలో కథ, మాటలు, comedy/reaction moments విశ్లేషిస్తోంది…"):
                     gemini_result = analyze_video_with_gemini(str(source), gemini_key, mime_type=video.type or "video/mp4")
+                    if gemini_result.get("remote_file_cleanup") == "deleted":
+                        st.success("Gemini temporary video upload was deleted after analysis.")
+                    elif gemini_result.get("remote_file_cleanup") == "delete_failed":
+                        st.warning("Gemini analysis completed, but temporary-file deletion could not be confirmed. Check Google AI Studio Files.")
                     gemini_result["moments"] = [item for item in gemini_result.get("moments", []) if 0 <= float(item.get("time", -1)) < float(duration)]
             if auto_subtitles and subtitle is None:
                 language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
