@@ -149,8 +149,12 @@ jobs:
               original_post = gemini_director.requests.post
               original_delete = gemini_director.requests.delete
               deleted_files = []
+              fail_delete = {"value": False}
               def fake_delete(url, **kwargs):
                   deleted_files.append((url, kwargs))
+                  if fail_delete["value"]:
+                      import requests
+                      raise requests.HTTPError("simulated cleanup failure")
                   return FakeResponse()
               gemini_director.requests.post = fake_post
               gemini_director.requests.delete = fake_delete
@@ -167,7 +171,11 @@ jobs:
                   assert video_part.get("media_processing") == "AGENTIC"
                   assert "media_processing" not in video_part.get("file_data", {})
                   assert len(deleted_files) == 1 and deleted_files[0][0].endswith("/files/test")
-                  print("PASS mocked Gemini Files upload, agentic video analysis, director moments, and remote cleanup")
+                  fail_delete["value"] = True
+                  analysis_with_cleanup_warning = gemini_director.analyze_video_with_gemini(str(gemini_video), "fake-key")
+                  assert analysis_with_cleanup_warning["summary"] == "Telugu comedy clip"
+                  assert analysis_with_cleanup_warning["remote_file_cleanup"] == "delete_failed"
+                  print("PASS mocked Gemini upload, agentic analysis, director cues, successful cleanup, and cleanup-failure warning")
               finally:
                   gemini_director.requests.post = original_post
                   gemini_director.requests.delete = original_delete
