@@ -72,6 +72,7 @@ jobs:
                   ("silent-with-music", silent, {"music_file": str(music)}),
                   ("voiced-timed-sfx", voiced, {"sfx_file": str(sfx), "sfx_volume": 0.2, "punch_times": [0.5, 1.6], "punch_cues": [{"time": 0.5, "kind": "reaction_emphasis"}, {"time": 1.6, "kind": "dialogue_emphasis"}]}),
                   ("voiced-music-sfx-slow", voiced, {"music_file": str(music), "sfx_file": str(sfx), "sfx_volume": 0.2, "playback_speed": 0.85, "punch_times": [0.5, 1.6]}),
+                  ("dialogue-priority-music-ducking", voiced, {"music_file": str(music), "music_volume": 0.2}),
                   ("silent-sfx-only", silent, {"sfx_file": str(sfx), "sfx_volume": 0.25, "punch_times": [0.75]}),
               ]
               for label, source, options in cases:
