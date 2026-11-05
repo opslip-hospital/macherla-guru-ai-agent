@@ -91,8 +91,9 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     elif gemini_result.get("remote_file_cleanup") == "delete_failed":
                         st.warning("Gemini analysis completed, but temporary-file deletion could not be confirmed. Check Google AI Studio Files.")
                     gemini_result["moments"] = [item for item in gemini_result.get("moments", []) if 0 <= float(item.get("time", -1)) < float(duration)]
-                except GeminiDirectorError as exc:
-                    # Gemini is an optional enhancement; its outage or missing key must
+                except (GeminiDirectorError, ComedyEditError, OSError) as exc:
+                    # Gemini is an optional enhancement; its outage, missing key, or
+                    # failure to prepare the short analysis clip must not block editing.
                     # not prevent the core visual edit and MP4 export from completing.
                     gemini_error = str(exc)
                     st.warning("Gemini analysis unavailable; continuing with visual editing and any Whisper cues. " + gemini_error)
