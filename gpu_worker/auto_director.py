@@ -25,6 +25,9 @@ def detect_scene_changes(video_path: str, *, threshold: float = 0.28, max_durati
         result = subprocess.run(command, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired as exc:
         raise ComedyEditError("Scene analysis timed out. Try a shorter video.") from exc
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "FFmpeg scene analysis failed")[-1200:]
+        raise ComedyEditError("Scene analysis failed: " + detail)
     output = (result.stderr or "") + "\n" + (result.stdout or "")
     found = []
     for match in re.finditer(r"pts_time:([0-9]+(?:\.[0-9]+)?)", output):
