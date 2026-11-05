@@ -8,7 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from gpu_worker.auto_director import detect_scene_changes, detect_face_tracking, make_comedy_edit_decision
+from gpu_worker.auto_director import detect_scene_changes, detect_face_tracking, make_comedy_edit_decision, clip_video_for_analysis
 from gpu_worker import comedy_edit
 from gpu_worker.auto_subtitles import SubtitleError, transcribe_to_srt
 from gpu_worker.gemini_director import GeminiDirectorError, analyze_video_with_gemini
@@ -83,9 +83,10 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 except Exception:
                     gemini_key = os.getenv("GEMINI_API_KEY", "")
                 try:
+                    with st.spinner("Gemini కోసం ఎంచుకున్న duration వరకు చిన్న MP4 సిద్ధం చేస్తున్నాం…"):
+                        analysis_clip = clip_video_for_analysis(str(source), str(root / "gemini_analysis_clip.mp4"), max_duration=duration)
                     with st.spinner("Gemini వీడియోలో కథ, మాటలు, comedy/reaction moments విశ్లేషిస్తోంది…"):
-                        detected_mime = video.type or mimetypes.guess_type(video.name)[0] or "video/mp4"
-                        gemini_result = analyze_video_with_gemini(str(source), gemini_key, mime_type=detected_mime)
+                        gemini_result = analyze_video_with_gemini(analysis_clip, gemini_key, mime_type="video/mp4")
                     if gemini_result.get("remote_file_cleanup") == "deleted":
                         st.success("Gemini temporary video upload was deleted after analysis.")
                     elif gemini_result.get("remote_file_cleanup") == "delete_failed":
