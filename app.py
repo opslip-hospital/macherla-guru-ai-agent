@@ -645,7 +645,7 @@ else:
         upload_description = st.session_state.get("ai_video_description", "").strip()
         upload_hashtags = st.session_state.get("ai_video_hashtags", "").strip()
         if upload_hashtags:
-            upload_description = (upload_description + "\\n\\n" + upload_hashtags).strip()
+            upload_description = (upload_description + "\n\n" + upload_hashtags).strip()
         upload_tags_text = st.session_state.get("ai_video_tags", "")
         if not uploaded_video or not upload_title:
             st.warning("ముందుగా వీడియో ఎంచుకుని Geminiతో వివరాలు తయారు చేయి.")
