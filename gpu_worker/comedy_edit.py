@@ -238,7 +238,7 @@ def render_comedy_edit(
         # Silent source: do not attach an audio filter or optional audio map.
         cmd += ["-vf", video_filter, "-map", "0:v:0"]
     cmd += [
-        "-t", str(float(max_duration)), "-c:v", "libx264", "-preset", "veryfast",
+        "-t", f"{output_duration:.3f}", "-c:v", "libx264", "-preset", "veryfast",
         "-crf", "19", "-r", "30", "-c:a", "aac", "-b:a", "192k",
         "-movflags", "+faststart", str(output),
     ]
