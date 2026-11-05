@@ -105,10 +105,12 @@ jobs:
                   def __init__(self, start, end, text):
                       self.start, self.end, self.text = start, end, text
                       self.words = [FakeWord(start, min(end, start + 0.25), text.split()[0])]
+              whisper_calls = []
               class FakeWhisperModel:
                   def __init__(self, *args, **kwargs):
                       pass
                   def transcribe(self, *args, **kwargs):
+                      whisper_calls.append(kwargs)
                       return iter([FakeSegment(0.25, 0.95, "నమస్కారం మావా"), FakeSegment(1.2, 2.0, "ఇది పరీక్ష")]), None
               sys.modules["faster_whisper"] = types.SimpleNamespace(WhisperModel=FakeWhisperModel)
               dummy_input = root / "speech-source.mp4"
@@ -129,7 +131,8 @@ jobs:
               assert len(word_times) == 2 and word_times[0]["word"] == "నమస్కారం"
               assert points == [0.25, 1.2]
               assert "నమస్కారం మావా" in transcript_srt.read_text(encoding="utf-8")
-              print("PASS Whisper transcript, word timing, subtitle timing, and speech punch-point export")
+              assert whisper_calls[0].get("clip_timestamps") == [0.0, 20.0]
+              print("PASS Whisper transcript, word timing, subtitle timing, speech punch-point export, and duration clipping")
               # Mock the Gemini Files upload + video understanding API without a paid API call.
               from gpu_worker import gemini_director
               class FakeResponse:
