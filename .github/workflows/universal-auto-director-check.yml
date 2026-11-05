@@ -100,6 +100,14 @@ jobs:
                       raise RuntimeError(f"{label}: FFmpeg could not read output MP4")
                   print(f"PASS {label}: {output.stat().st_size} bytes")
 
+              # A short silent source with looping music must not leave a long audio tail.
+              short_music_output = root / "short-silent-with-music.mp4"
+              render_comedy_edit(str(silent), str(short_music_output), max_duration=20,
+                                 music_file=str(music), playback_speed=1.15)
+              short_output_duration = _probe_duration(short_music_output)
+              assert 2.4 <= short_output_duration <= 2.9, short_output_duration
+              print(f"PASS short silent source output duration stays synchronized: {short_output_duration:.2f}s")
+
               # Exercise Whisper result formatting without downloading a speech model.
               import sys
               import types
