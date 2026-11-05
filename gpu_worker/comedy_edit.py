@@ -196,7 +196,12 @@ def render_comedy_edit(
                 f"[{music_index}:a]volume={float(music_volume):.3f},"
                 f"afade=t=in:st=0:d=0.6,afade=t=out:st={audio_fade_out_start:.3f}:d=0.25[music]"
             )
-            audio_labels.append("[music]")
+            if has_original_audio:
+                # Automatically lower the music while original dialogue/audio is active.
+                graph_parts.append("[music][original]sidechaincompress=threshold=0.025:ratio=5:attack=25:release=320[duckedmusic]")
+                audio_labels.append("[duckedmusic]")
+            else:
+                audio_labels.append("[music]")
         if sfx_file:
             source_window = min(source_duration, float(max_duration) * float(playback_speed))
             moments = sorted({max(0.0, float(t)) for t in (punch_times or []) if 0 <= float(t) < source_window})[:8]
