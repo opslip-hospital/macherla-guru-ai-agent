@@ -28,7 +28,7 @@ def _track_expr(points: list[dict] | None, axis: str) -> str:
     return f"if(lt(t,{float(valid[0]['time']):.3f}),{float(valid[0][axis]):.4f},{expr})"
 
 
-def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", punch_times: list[float] | None = None, face_track_points: list[dict] | None = None) -> str:
+def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", punch_times: list[float] | None = None, face_track_points: list[dict] | None = None, punch_cues: list[dict] | None = None) -> str:
     sizes = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (720, 720)}
     if aspect_ratio not in sizes:
         raise ComedyEditError("Aspect ratio must be 9:16, 16:9, or 1:1.")
@@ -41,12 +41,19 @@ def build_comedy_filter(aspect_ratio: str = "9:16", intensity: str = "High", pun
     base_cycle_frames = 54  # 1.8 seconds at 30 fps
     base_expr = f"1+({zoom}-1)*(0.5-0.5*cos(2*PI*mod(on,{base_cycle_frames})/{base_cycle_frames}))"
     z_expr = base_expr
-    # Stronger half-second cinematic punch at detected visual beats.
-    for punch_time in reversed((punch_times or [])[:20]):
-        start = max(0, int(float(punch_time) * 30))
-        end = start + 15
+    # Cue-specific punch zoom: real Gemini reaction moments receive a stronger, longer emphasis.
+    cues = list(punch_cues or [])
+    if not cues:
+        cues = [{"time": t, "kind": "dialogue_emphasis"} for t in (punch_times or [])]
+    cues = sorted(cues, key=lambda item: float(item.get("time", 0)))[:20]
+    for cue in reversed(cues):
+        start = max(0, int(float(cue.get("time", 0)) * 30))
+        reaction = str(cue.get("kind", "")).lower() == "reaction_emphasis"
+        cue_zoom = {"Medium": "1.31", "High": "1.43", "Extreme": "1.52"}[intensity] if reaction else punch_zoom
+        frames = 24 if reaction else 15
+        end = start + frames
         condition = f"between(on,{start},{end})"
-        pulse = f"1+({punch_zoom}-1)*(0.5-0.5*cos(2*PI*(on-{start})/15))"
+        pulse = f"1+({cue_zoom}-1)*(0.5-0.5*cos(2*PI*(on-{start})/{frames}))"
         z_expr = f"if({condition},{pulse},{z_expr})"
     return (
         f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
@@ -130,6 +137,7 @@ def render_comedy_edit(
     face_track_points: list[dict] | None = None,
     sfx_file: str | None = None,
     sfx_volume: float = 0.22,
+    punch_cues: list[dict] | None = None,
 ) -> str:
     source, output = Path(input_video), Path(output_video)
     if not source.is_file() or source.stat().st_size == 0:
@@ -153,7 +161,7 @@ def render_comedy_edit(
     output_duration = min(float(max_duration), source_duration / float(playback_speed))
     fade_out_start = max(0.0, output_duration - 0.35)
     audio_fade_out_start = max(0.0, output_duration - 0.25)
-    video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times, face_track_points=face_track_points)
+    video_filter = build_comedy_filter(aspect_ratio, intensity, punch_times=punch_times, face_track_points=face_track_points, punch_cues=punch_cues)
     video_filter += f",setpts=PTS/{float(playback_speed):.3f},fade=t=in:st=0:d=0.25,fade=t=out:st={fade_out_start:.3f}:d=0.35"
     if subtitle_file:
         subtitle_path = _retime_srt(Path(subtitle_file), float(playback_speed))
