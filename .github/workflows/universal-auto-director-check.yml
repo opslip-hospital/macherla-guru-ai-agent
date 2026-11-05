@@ -70,7 +70,7 @@ jobs:
                   ("voiced-no-music-fast", voiced, {"playback_speed": 1.15, "face_track_points": [{"time": 0.0, "x": 0.35, "y": 0.5}, {"time": 1.0, "x": 0.65, "y": 0.5}]}),
                   ("voiced-music-srt-slow", voiced, {"music_file": str(music), "subtitle_file": str(srt), "playback_speed": 0.85}),
                   ("silent-with-music", silent, {"music_file": str(music)}),
-                  ("voiced-timed-sfx", voiced, {"sfx_file": str(sfx), "sfx_volume": 0.2, "punch_times": [0.5, 1.6]}),
+                  ("voiced-timed-sfx", voiced, {"sfx_file": str(sfx), "sfx_volume": 0.2, "punch_times": [0.5, 1.6], "punch_cues": [{"time": 0.5, "kind": "reaction_emphasis"}, {"time": 1.6, "kind": "dialogue_emphasis"}]}),
                   ("voiced-music-sfx-slow", voiced, {"music_file": str(music), "sfx_file": str(sfx), "sfx_volume": 0.2, "playback_speed": 0.85, "punch_times": [0.5, 1.6]}),
                   ("silent-sfx-only", silent, {"sfx_file": str(sfx), "sfx_volume": 0.25, "punch_times": [0.75]}),
               ]
