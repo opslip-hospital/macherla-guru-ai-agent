@@ -157,6 +157,7 @@ jobs:
                   generate_call = next(call for call in calls if "/models/gemini-3.8-flash:generateContent" in call[0])
                   video_part = generate_call[1]["json"]["contents"][0]["parts"][0]
                   assert video_part.get("media_processing") == "AGENTIC"
+                  assert "media_processing" not in video_part.get("file_data", {})
                   print("PASS mocked Gemini Files upload, agentic video analysis, and director moments")
               finally:
                   gemini_director.requests.post = original_post
