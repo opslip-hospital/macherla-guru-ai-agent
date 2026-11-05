@@ -419,10 +419,20 @@ else:
 
 
 
-    st.subheader("🎬 ఒక్క వీడియో ఇవ్వు — మిగతావన్నీ Gemini సిద్ధం చేస్తుంది")
+    st.subheader("🎬 వీడియో Upload చేయి — Gemini metadata తయారు చేసి, నీ approval అడుగుతుంది")
+    st.caption("వీడియో ఎంచుకున్న వెంటనే Title, Caption, Viral Hashtags, SEO Tags ఆటోమేటిక్‌గా తయారవుతాయి. నీ అనుమతి లేకుండా Public లేదా Schedule చేయదు.")
     uploaded_video = st.file_uploader("నీ వీడియో ఎంచుకోండి", type=["mp4", "mov", "avi", "webm"], key="source_video_for_ai")
     if uploaded_video and GEMINI_KEY:
-        if st.button("✨ ఈ వీడియో చూసి Title, SEO, Tags, Captions తయారు చేయి", type="primary"):
+        import hashlib
+        current_video_hash = hashlib.sha256(uploaded_video.getvalue()).hexdigest()
+        if st.session_state.get("ai_video_analysis_hash") != current_video_hash:
+            st.session_state["ai_video_metadata"] = {}
+            st.session_state["ai_video_title"] = ""
+            st.session_state["ai_video_description"] = ""
+            st.session_state["ai_video_tags"] = ""
+            st.session_state["ai_video_hashtags"] = ""
+            st.session_state["ai_generated_thumbnail_bytes"] = None
+            st.info("వీడియో upload అయింది. Gemini ఇప్పుడు దానికి సరిపోయే viral title, caption, hashtags, SEO tags తయారు చేస్తోంది.")
             try:
                 video_bytes = uploaded_video.getvalue()
                 mime_type = uploaded_video.type or "video/mp4"
@@ -539,6 +549,8 @@ else:
                 st.session_state["ai_video_description"] = str(metadata.get("description", ""))
                 st.session_state["ai_video_title"] = str(metadata.get("title", ""))[:100]
                 st.session_state["ai_video_tags"] = ", ".join(str(tag) for tag in metadata.get("tags", []))
+                st.session_state["ai_video_hashtags"] = " ".join(str(tag) for tag in metadata.get("hashtags", []))
+                st.session_state["ai_video_analysis_hash"] = current_video_hash
 
                 # If the owner has not supplied a thumbnail, ask Gemini image
                 # generation to create one using the actual uploaded video as context.
@@ -600,6 +612,7 @@ else:
                 st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. Thumbnail నువ్వు ఇస్తే అదే; ఇవ్వకపోతే Gemini తయారు చేసినదాన్ని వాడతాం. Upload ముందు Review చేయి.")
             except Exception as exc:
                 st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
+                st.warning("వీడియోను మళ్లీ ఎంచుకో లేదా పేజీని Refresh చేసి తిరిగి ప్రయత్నించు.")
     elif uploaded_video and not GEMINI_KEY:
         st.warning("Gemini API key లేదు. Streamlit Secretsలో GEMINI_API_KEY తనిఖీ చేయి.")
 
@@ -611,8 +624,9 @@ else:
         st.markdown("#### ✨ Gemini తయారు చేసిన వివరాలు — Review చేయి")
         st.text_input("YouTube Title", key="ai_video_title", max_chars=100)
         st.text_area("Description", key="ai_video_description", height=140)
-        st.text_input("Tags (comma separated)", key="ai_video_tags")
-        st.write("**Hashtags:** " + " ".join(metadata.get("hashtags", [])))
+        st.text_input("SEO Tags (comma separated)", key="ai_video_tags")
+        st.text_area("Viral Hashtags (edit if needed)", key="ai_video_hashtags", height=75)
+        st.success("AI metadata సిద్ధమైంది. ఇప్పుడు Private Upload చేసి, తర్వాత నీ approvalతో మాత్రమే Public లేదా Schedule అవుతుంది.")
         generated_thumb = st.session_state.get("ai_generated_thumbnail_bytes")
         if generated_thumb:
             st.write("**Gemini తయారు చేసిన Thumbnail Preview (నువ్వు ఇవ్వనప్పుడు):**")
@@ -628,7 +642,10 @@ else:
 
     if upload_submit:
         upload_title = st.session_state.get("ai_video_title", "").strip()
-        upload_description = st.session_state.get("ai_video_description", "")
+        upload_description = st.session_state.get("ai_video_description", "").strip()
+        upload_hashtags = st.session_state.get("ai_video_hashtags", "").strip()
+        if upload_hashtags:
+            upload_description = (upload_description + "\\n\\n" + upload_hashtags).strip()
         upload_tags_text = st.session_state.get("ai_video_tags", "")
         if not uploaded_video or not upload_title:
             st.warning("ముందుగా వీడియో ఎంచుకుని Geminiతో వివరాలు తయారు చేయి.")
