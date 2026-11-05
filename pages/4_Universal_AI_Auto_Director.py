@@ -94,7 +94,6 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 except (GeminiDirectorError, ComedyEditError, OSError) as exc:
                     # Gemini is an optional enhancement; its outage, missing key, or
                     # failure to prepare the short analysis clip must not block editing.
-                    # not prevent the core visual edit and MP4 export from completing.
                     gemini_error = str(exc)
                     st.warning("Gemini analysis unavailable; continuing with visual editing and any Whisper cues. " + gemini_error)
             if auto_subtitles and subtitle is None:
