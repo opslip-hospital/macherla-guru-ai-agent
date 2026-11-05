@@ -14,7 +14,13 @@ class ComedyEditError(ValueError):
 
 
 def _track_expr(points: list[dict] | None, axis: str) -> str:
-    valid = sorted((p for p in (points or []) if axis in p), key=lambda p: float(p["time"]))[:40]
+    valid = sorted((p for p in (points or []) if axis in p), key=lambda p: float(p["time"]))
+    # Keep anchors across the entire clip. Taking the first 40 samples made
+    # tracking stop halfway through a 20-second video at 0.25s sampling.
+    if len(valid) > 100:
+        last = len(valid) - 1
+        indexes = sorted({round(i * last / 99) for i in range(100)})
+        valid = [valid[index] for index in indexes]
     if not valid:
         return "0.5"
     expr = f"{float(valid[-1][axis]):.4f}"
