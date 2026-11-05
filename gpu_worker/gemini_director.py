@@ -19,6 +19,7 @@ def analyze_video_with_gemini(video_path: str, api_key: str, *, mime_type: str =
     if not source.is_file() or source.stat().st_size == 0:
         raise GeminiDirectorError("Video file is missing for Gemini analysis.")
     data = source.read_bytes()
+    remote_file_name = None
     try:
         start = requests.post(
             "https://generativelanguage.googleapis.com/upload/v1beta/files",
@@ -45,6 +46,7 @@ def analyze_video_with_gemini(video_path: str, api_key: str, *, mime_type: str =
         )
         finish.raise_for_status()
         info = finish.json().get("file", finish.json())
+        remote_file_name = info.get("name")
         uri, state = info.get("uri"), info.get("state", "PROCESSING")
         if not uri:
             raise GeminiDirectorError("Gemini did not return a video URI.")
@@ -105,3 +107,16 @@ def analyze_video_with_gemini(video_path: str, api_key: str, *, mime_type: str =
         raise GeminiDirectorError(f"Gemini API request failed: {exc}") from exc
     except (ValueError, KeyError, IndexError, TypeError) as exc:
         raise GeminiDirectorError(f"Gemini analysis response could not be parsed: {exc}") from exc
+    finally:
+        # Gemini Files are temporary inputs; delete them immediately after analysis,
+        # including when processing or generation fails. Cleanup must not hide the
+        # original analysis result/error.
+        if remote_file_name:
+            try:
+                requests.delete(
+                    "https://generativelanguage.googleapis.com/v1beta/" + remote_file_name,
+                    headers={"x-goog-api-key": api_key},
+                    timeout=30,
+                )
+            except requests.RequestException:
+                pass
