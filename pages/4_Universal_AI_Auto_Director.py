@@ -96,18 +96,31 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     st.warning("Gemini analysis unavailable; continuing with visual editing and any Whisper cues. " + gemini_error)
             if auto_subtitles and subtitle is None:
                 language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
-                with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):
-                    subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model, punch_points_path=str(speech_points_path), transcript_path=str(transcript_path), word_timestamps_path=str(word_timestamps_path)))
-                if speech_points_path.is_file():
-                    speech_points = json.loads(speech_points_path.read_text(encoding="utf-8"))
-                if transcript_path.is_file():
-                    transcript_segments = json.loads(transcript_path.read_text(encoding="utf-8"))
-                if word_timestamps_path.is_file():
-                    speech_word_timestamps = json.loads(word_timestamps_path.read_text(encoding="utf-8"))
+                try:
+                    with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):
+                        subtitle_path = Path(transcribe_to_srt(str(source), str(root / "auto_captions.srt"), language=language_code, model_size=whisper_model, punch_points_path=str(speech_points_path), transcript_path=str(transcript_path), word_timestamps_path=str(word_timestamps_path)))
+                    if speech_points_path.is_file():
+                        speech_points = json.loads(speech_points_path.read_text(encoding="utf-8"))
+                    if transcript_path.is_file():
+                        transcript_segments = json.loads(transcript_path.read_text(encoding="utf-8"))
+                    if word_timestamps_path.is_file():
+                        speech_word_timestamps = json.loads(word_timestamps_path.read_text(encoding="utf-8"))
+                except SubtitleError as exc:
+                    # Speech recognition is optional: missing models/no speech must not
+                    # block the visual edit or final MP4 export.
+                    st.warning("Auto subtitles unavailable; continuing without generated captions. " + str(exc))
+                    subtitle_path = None
             with st.spinner("1/3 వీడియో సీన్లను విశ్లేషిస్తున్నాం…"):
                 cuts = detect_scene_changes(str(source), threshold=threshold, max_duration=duration)
                 if face_tracking:
-                    face_track_points = detect_face_tracking(str(source), aspect_ratio=ratio_value, max_duration=duration)
+                    try:
+                        face_track_points = detect_face_tracking(str(source), aspect_ratio=ratio_value, max_duration=duration)
+                    except Exception as exc:
+                        # Face tracking is experimental; fall back to centered framing
+                        # rather than failing the entire video edit.
+                        logging.warning("Face tracking unavailable; using center crop: %s", exc)
+                        face_track_points = []
+                        st.warning("Face tracking unavailable; using center crop. " + str(exc))
                 plan = make_comedy_edit_decision(cuts, duration=duration)
                 plan["speech_punch_points"] = speech_points
                 plan["face_tracking_points"] = face_track_points
