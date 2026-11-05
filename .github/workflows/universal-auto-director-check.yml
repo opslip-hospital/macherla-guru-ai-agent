@@ -7,6 +7,7 @@ on:
       - "gpu_worker/comedy_edit.py"
       - "gpu_worker/auto_director.py"
       - "gpu_worker/auto_subtitles.py"
+      - "gpu_worker/gemini_director.py"
       - "pages/4_Universal_AI_Auto_Director.py"
       - ".github/workflows/universal-auto-director-check.yml"
   workflow_dispatch:
@@ -146,7 +147,13 @@ jobs:
                       })}]}}]})
                   raise AssertionError("Unexpected Gemini URL: " + url)
               original_post = gemini_director.requests.post
+              original_delete = gemini_director.requests.delete
+              deleted_files = []
+              def fake_delete(url, **kwargs):
+                  deleted_files.append((url, kwargs))
+                  return FakeResponse()
               gemini_director.requests.post = fake_post
+              gemini_director.requests.delete = fake_delete
               try:
                   gemini_video = root / "gemini-test.mp4"
                   gemini_video.write_bytes(b"mock video bytes")
@@ -158,8 +165,10 @@ jobs:
                   video_part = generate_call[1]["json"]["contents"][0]["parts"][0]
                   assert video_part.get("media_processing") == "AGENTIC"
                   assert "media_processing" not in video_part.get("file_data", {})
-                  print("PASS mocked Gemini Files upload, agentic video analysis, and director moments")
+                  assert len(deleted_files) == 1 and deleted_files[0][0].endswith("/files/test")
+                  print("PASS mocked Gemini Files upload, agentic video analysis, director moments, and remote cleanup")
               finally:
                   gemini_director.requests.post = original_post
+                  gemini_director.requests.delete = original_delete
 
           PY
