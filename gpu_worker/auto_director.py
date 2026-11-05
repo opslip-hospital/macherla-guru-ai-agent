@@ -37,6 +37,28 @@ def detect_scene_changes(video_path: str, *, threshold: float = 0.28, max_durati
     return found[:30]
 
 
+def clip_video_for_analysis(video_path: str, output_path: str, *, max_duration: float = 20.0) -> str:
+    """Create a short MP4 analysis copy so optional AI analysis never uploads an entire long source."""
+    source, output = Path(video_path), Path(output_path)
+    if not source.is_file() or source.stat().st_size == 0:
+        raise ComedyEditError("Video file is missing or empty for AI analysis.")
+    if not 1 <= float(max_duration) <= 20:
+        raise ComedyEditError("AI analysis duration must be between 1 and 20 seconds.")
+    try:
+        result = subprocess.run(
+            [_ffmpeg_path(), "-y", "-hide_banner", "-i", str(source), "-t", str(float(max_duration)),
+             "-map", "0:v:0", "-map", "0:a?", "-c:v", "libx264", "-preset", "ultrafast",
+             "-crf", "28", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", str(output)],
+            capture_output=True, text=True, timeout=180,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ComedyEditError("Preparing the short AI analysis clip timed out.") from exc
+    if result.returncode != 0 or not output.is_file() or output.stat().st_size < 1024:
+        detail = (result.stderr or result.stdout or "FFmpeg could not prepare the analysis clip")[-1200:]
+        raise ComedyEditError("AI analysis clip preparation failed: " + detail)
+    return str(output)
+
+
 def make_comedy_edit_decision(cuts: list[float], *, duration: float) -> dict:
     if not 1 <= float(duration) <= 20:
         raise ComedyEditError("Duration must be between 1 and 20 seconds.")
