@@ -159,6 +159,7 @@ jobs:
                   gemini_video.write_bytes(b"mock video bytes")
                   analysis = gemini_director.analyze_video_with_gemini(str(gemini_video), "fake-key")
                   assert analysis["summary"] == "Telugu comedy clip"
+                  assert analysis["remote_file_cleanup"] == "deleted"
                   assert analysis["moments"][0]["time"] == 1.25
                   assert any("/models/gemini-3.8-flash:generateContent" in call[0] for call in calls)
                   generate_call = next(call for call in calls if "/models/gemini-3.8-flash:generateContent" in call[0])
