@@ -74,19 +74,26 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
         speech_word_timestamps = []
         face_track_points = []
         gemini_result = {"summary": "", "moments": []}
+        gemini_error = ""
         try:
             if gemini_analysis:
                 try:
                     gemini_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
                 except Exception:
                     gemini_key = os.getenv("GEMINI_API_KEY", "")
-                with st.spinner("Gemini వీడియోలో కథ, మాటలు, comedy/reaction moments విశ్లేషిస్తోంది…"):
-                    gemini_result = analyze_video_with_gemini(str(source), gemini_key, mime_type=video.type or "video/mp4")
+                try:
+                    with st.spinner("Gemini వీడియోలో కథ, మాటలు, comedy/reaction moments విశ్లేషిస్తోంది…"):
+                        gemini_result = analyze_video_with_gemini(str(source), gemini_key, mime_type=video.type or "video/mp4")
                     if gemini_result.get("remote_file_cleanup") == "deleted":
                         st.success("Gemini temporary video upload was deleted after analysis.")
                     elif gemini_result.get("remote_file_cleanup") == "delete_failed":
                         st.warning("Gemini analysis completed, but temporary-file deletion could not be confirmed. Check Google AI Studio Files.")
                     gemini_result["moments"] = [item for item in gemini_result.get("moments", []) if 0 <= float(item.get("time", -1)) < float(duration)]
+                except GeminiDirectorError as exc:
+                    # Gemini is an optional enhancement; its outage or missing key must
+                    # not prevent the core visual edit and MP4 export from completing.
+                    gemini_error = str(exc)
+                    st.warning("Gemini analysis unavailable; continuing with visual editing and any Whisper cues. " + gemini_error)
             if auto_subtitles and subtitle is None:
                 language_code = {"Auto detect": None, "Telugu": "te", "English": "en", "Hindi": "hi", "Tamil": "ta", "Kannada": "kn", "Malayalam": "ml"}[subtitle_language]
                 with st.spinner("Speech recognition model సిద్ధం చేస్తున్నాం; మొదటిసారి model download కావచ్చు…"):
@@ -107,6 +114,7 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                 plan["face_tracking_detected"] = bool(face_track_points)
                 plan["gemini_story_summary"] = gemini_result.get("summary", "")
                 plan["gemini_director_moments"] = gemini_result.get("moments", [])
+                plan["gemini_analysis_error"] = gemini_error
                 plan["speech_transcript"] = transcript_segments
                 plan["speech_word_timestamps"] = speech_word_timestamps
                 plan["note"] += " Speech phrase starts can also guide punch zoom timing when Whisper subtitles are enabled."
@@ -139,8 +147,8 @@ if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video i
                     for segment in transcript_segments:
                         st.write("{:.2f}s–{:.2f}s: {}".format(segment["start"], segment["end"], segment["text"]))
                     if speech_word_timestamps:
-                        with st.expander("Word-level timing (lip-sync preparation)", expanded=False):
-                            st.write(" · ".join("{} [{:.2f}–{:.2f}s]".format(item["word"], item["start"], item["end"]) for item in speech_word_timestamps))
+                        st.caption("Word-level timing (lip-sync preparation)")
+                        st.write(" · ".join("{} [{:.2f}–{:.2f}s]".format(item["word"], item["start"], item["end"]) for item in speech_word_timestamps))
             if cuts:
                 st.write("Dynamic punch points: " + ", ".join(f"{x:.2f}s" for x in cuts))
             else:
