@@ -45,7 +45,7 @@ whisper_model = st.selectbox("Whisper model (CPU)", ["tiny", "base", "small"], i
 music_volume = st.slider("Background music volume", 0.0, 0.35, 0.12, 0.01)
 sfx_volume = st.slider("Sound-effect volume", 0.0, 0.8, 0.22, 0.02)
 st.caption(
-    "Visual scene analysis is separate from dialogue meaning. Optional face-aware crop tracking and Whisper speech-to-text are available; reaction shots are not generated."
+    "Visual scene analysis is separate from dialogue meaning. Optional face-aware crop tracking and Whisper speech-to-text are available; reaction shots are not generated. Background music automatically ducks under original audio when both tracks are present."
 )
 
 if st.button("🎬 Auto Director + Edit Video", type="primary", disabled=video is None, use_container_width=True):
