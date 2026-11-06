@@ -103,7 +103,7 @@ def normalize_hashtags(values, fallback=None):
             result.append(tag)
         if len(result) == 5:
             break
-    fallback = fallback or ["AIMowa", "TeluguComedy", "AIComedy", "FunnyReels", "TeluguShorts"]
+    fallback = fallback or ["MacherlaGuru", "TeluguShorts", "TeluguEntertainment", "AIEntertainment", "TrendingShorts"]
     for value in fallback:
         tag = "".join(ch for ch in str(value).strip().lstrip("#") if _is_metadata_tag_character(ch))
         if tag and tag.casefold() not in {item.casefold() for item in result}:
@@ -733,7 +733,7 @@ SEO QUALITY RULES:
 - Provide 5 genuinely different title options: a direct searchable title, a curiosity hook, a benefit/result angle (only if shown), a Telugu-first option, and a concise mixed Telugu-English option. Do not make unsupported viral/trending claims.
 - Description: write 2 strong opening lines that naturally include the main topic and what viewers will learn/see; then 2-4 useful details grounded in the video and a simple CTA. No generic filler.
 - Tags: provide 12-18 distinct search phrases, mixing English, Telugu script and natural Telugu transliteration where useful. Include exact tool/product names only when clearly present. Avoid near-duplicates and unrelated broad tags.
-- Hashtags: exactly 5 unique, relevant hashtags. Always include #AIMowa. Choose the remaining four based on this video's subject. Use #TeluguComedy and/or #AIComedy only for comedy/entertainment videos; for AI/technology tutorials use relevant tags such as #TeluguTech, #AITools or #VideoEditing instead. Never force a comedy hashtag onto a technology tutorial.
+- Hashtags: exactly 5 unique, relevant hashtags. Always include #MacherlaGuru as the channel brand. Choose the remaining four based on this video's actual subject. Use #AIMowa only when the video is specifically about AI Mowa; do not use it as the channel brand. Use #TeluguComedy and/or #AIComedy only for comedy/entertainment videos; for AI/technology tutorials use relevant tags such as #TeluguTech, #AITools or #VideoEditing instead. Never force a comedy hashtag onto a technology tutorial.
 - Instagram and YouTube captions must have different opening hooks, sound natural and conversational, and accurately describe the actual clip. Each must contain exactly the same 5 selected hashtags.
 - thumbnail_prompt: cinematic and specific to the actual video, matching its aspect ratio; only actual characters/props; no text or watermark.
 - category: most suitable YouTube category label. keywords: useful search phrases in Telugu, English and transliteration.
@@ -1637,7 +1637,7 @@ Selected output: {content_type}
 Topic: {topic}
 Extra instructions: {extra or "None"}
 Recent channel context (inspiration only; never copy): {recent_context or "Not available"}
-For YouTube Shorts Title + SEO: give 5 distinct keyword-first title options (each <=100 characters), mark the strongest option, write a natural Telugu SEO description with the main topic in its first two lines and a short CTA, provide 12-18 relevant search tags including useful Telugu/English transliterations, exactly 5 unique topic-relevant hashtags (include #AIMowa #TeluguComedy #AIComedy when relevant plus two topic tags), and one curiosity-hook caption. No keyword stuffing, unrelated tags, fabricated claims, script, Flow prompt, character locks, or thumbnail instructions.
+For YouTube Shorts Title + SEO: give 5 distinct keyword-first title options (each <=100 characters), mark the strongest option, write a natural Telugu SEO description with the main topic in its first two lines and a short CTA, provide 12-18 relevant search tags including useful Telugu/English transliterations, exactly 5 unique topic-relevant hashtags (always include #MacherlaGuru as the channel brand; include #AIMowa only when the video is specifically about AI Mowa; use #TeluguComedy and #AIComedy only when relevant, then fill the remaining slots with topic-specific tags), and one curiosity-hook caption. No keyword stuffing, unrelated tags, fabricated claims, script, Flow prompt, character locks, or thumbnail instructions.
 For Thumbnail Prompt: return only one detailed image prompt tailored to the supplied topic, with appropriate 9:16 or 16:9 framing, clear subject hierarchy, cinematic 4K 3D CGI where suitable, and no text, watermark, or unrequested characters/props.
 For Weekly Content Calendar: create a practical 7-day calendar with distinct original Telugu AI entertainment ideas, opening hooks, and suggested formats; do not repeat recent video ideas.
 Use natural Telugu for spoken/caption text. Do not insert unrelated foreign-script characters. Do not guarantee views or claim an algorithm outcome.
