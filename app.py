@@ -599,7 +599,30 @@ else:
                                 {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
                                 {"text": ai_prompt},
                             ]}],
-                            "generationConfig": {"temperature": 0.45, "responseMimeType": "application/json"},
+                            "generationConfig": {
+                                "temperature": 0.45,
+                                "responseMimeType": "application/json",
+                                "responseJsonSchema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "title": {"type": "string"},
+                                        "description": {"type": "string"},
+                                        "tags": {"type": "array", "items": {"type": "string"}},
+                                        "hashtags": {"type": "array", "items": {"type": "string"}},
+                                        "thumbnail_prompt": {"type": "string"},
+                                        "instagram_caption": {"type": "string"},
+                                        "youtube_caption": {"type": "string"},
+                                        "category": {"type": "string"},
+                                        "keywords": {"type": "array", "items": {"type": "string"}}
+                                    },
+                                    "required": [
+                                        "title", "description", "tags", "hashtags",
+                                        "thumbnail_prompt", "instagram_caption",
+                                        "youtube_caption", "category", "keywords"
+                                    ],
+                                    "additionalProperties": false
+                                }
+                            },
                         },
                         timeout=240,
                     )
