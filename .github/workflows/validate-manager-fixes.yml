@@ -25,7 +25,7 @@ jobs:
           import ast
           from pathlib import Path
           tree = ast.parse(Path("app.py").read_text(encoding="utf-8"))
-          names = {"normalize_hashtags", "normalize_youtube_tags", "build_youtube_description", "youtube_category_id", "caption_with_five_hashtags"}
+          names = {"normalize_hashtags", "normalize_title_options", "normalize_youtube_tags", "build_youtube_description", "youtube_category_id", "caption_with_five_hashtags"}
           nodes = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names]
           assert {node.name for node in nodes} == names
           module = ast.Module(body=nodes, type_ignores=[])
@@ -33,11 +33,15 @@ jobs:
           exec(compile(module, "metadata_helpers", "exec"), namespace)
           tags = namespace["normalize_hashtags"](["#one", "#two", "#three", "#four", "#five", "#six"])
           assert len(tags) == 5 and all(tag.startswith("#") for tag in tags)
+          titles = namespace["normalize_title_options"](["Title A", "Title A", "Title B"], fallback_title="Best Title")
+          assert titles == ["Title A", "Title B", "Best Title"] or titles == ["Title A", "Title B"]
           youtube_tags = namespace["normalize_youtube_tags"](["x" * 300, "y" * 300])
           assert sum(map(len, youtube_tags)) + max(0, len(youtube_tags) - 1) <= 500
           description, clipped = namespace["build_youtube_description"]("తెలుగు" * 2000, tags)
           assert len(description.encode("utf-8")) <= 5000 and clipped
           assert len([part for part in description.split() if part.startswith("#")]) == 5
+          cleaned, _ = namespace["build_youtube_description"]("Hook #old\nMore detail", tags)
+          assert "#old" not in cleaned
           assert namespace["youtube_category_id"]("Comedy") == "23"
           caption = namespace["caption_with_five_hashtags"]("Hook #old #old2", tags)
           assert len([part for part in caption.split() if part.startswith("#")]) == 5
