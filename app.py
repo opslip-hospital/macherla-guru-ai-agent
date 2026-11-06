@@ -584,101 +584,106 @@ else:
 
     st.subheader("🎬 ఒక్క వీడియో ఇవ్వు — మిగతావన్నీ Gemini సిద్ధం చేస్తుంది")
     uploaded_video = st.file_uploader("నీ వీడియో ఎంచుకోండి", type=["mp4", "mov", "avi", "webm"], key="source_video_for_ai")
-    if uploaded_video and GEMINI_KEY:
-        if st.button("✨ ఈ వీడియో చూసి Title, SEO, Tags, Captions తయారు చేయి", type="primary"):
-            try:
-                video_bytes = uploaded_video.getbuffer()
-                mime_type = uploaded_video.type or "video/mp4"
-                import time
-                video_fingerprint = hashlib.sha256(video_bytes).hexdigest()
-                cached_file = st.session_state.get("gemini_video_file_cache", {})
-                cache_valid = (
-                    isinstance(cached_file, dict)
-                    and cached_file.get("fingerprint") == video_fingerprint
-                    and cached_file.get("uri")
-                    and time.time() - cached_file.get("created_at", 0) < 36 * 60 * 60
+    generate_metadata_clicked = st.button(
+        "✨ ఈ వీడియో చూసి Title, SEO, Tags, Captions తయారు చేయి",
+        type="primary",
+        disabled=not bool(uploaded_video) or not bool(GEMINI_KEY),
+        key="generate_video_metadata",
+    )
+    if uploaded_video and GEMINI_KEY and generate_metadata_clicked:
+        try:
+            video_bytes = uploaded_video.getbuffer()
+            mime_type = uploaded_video.type or "video/mp4"
+            import time
+            video_fingerprint = hashlib.sha256(video_bytes).hexdigest()
+            cached_file = st.session_state.get("gemini_video_file_cache", {})
+            cache_valid = (
+                isinstance(cached_file, dict)
+                and cached_file.get("fingerprint") == video_fingerprint
+                and cached_file.get("uri")
+                and time.time() - cached_file.get("created_at", 0) < 36 * 60 * 60
+            )
+            if cache_valid:
+                file_info = {
+                    "uri": cached_file["uri"],
+                    "name": cached_file.get("name", ""),
+                    "state": cached_file.get("state", "ACTIVE"),
+                }
+                file_uri = file_info["uri"]
+                file_state = file_info["state"]
+                st.info("ఈ వీడియో Geminiకి ఇప్పటికే upload అయింది; saved fileని మళ్లీ ఉపయోగిస్తున్నాను.")
+            else:
+                start = requests.post(
+                    "https://generativelanguage.googleapis.com/upload/v1beta/files",
+                    headers={
+                        "x-goog-api-key": GEMINI_KEY,
+                        "X-Goog-Upload-Protocol": "resumable",
+                        "X-Goog-Upload-Command": "start",
+                        "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
+                        "X-Goog-Upload-Header-Content-Type": mime_type,
+                        "Content-Type": "application/json",
+                    },
+                    json={"file": {"display_name": uploaded_video.name}},
+                    timeout=60,
                 )
-                if cache_valid:
-                    file_info = {
-                        "uri": cached_file["uri"],
-                        "name": cached_file.get("name", ""),
-                        "state": cached_file.get("state", "ACTIVE"),
-                    }
-                    file_uri = file_info["uri"]
-                    file_state = file_info["state"]
-                    st.info("ఈ వీడియో Geminiకి ఇప్పటికే upload అయింది; saved fileని మళ్లీ ఉపయోగిస్తున్నాను.")
+                start.raise_for_status()
+                upload_url = start.headers.get("X-Goog-Upload-URL")
+                if not upload_url:
+                    raise RuntimeError("Gemini video upload URL రాలేదు.")
+                finish = requests.post(
+                    upload_url,
+                    headers={
+                        "X-Goog-Upload-Offset": "0",
+                        "X-Goog-Upload-Command": "upload, finalize",
+                        "Content-Length": str(len(video_bytes)),
+                    },
+                    data=video_bytes,
+                    timeout=300,
+                )
+                finish.raise_for_status()
+                finish_data = finish.json()
+                if isinstance(finish_data, dict):
+                    file_info = finish_data.get("file", finish_data)
                 else:
-                    start = requests.post(
-                        "https://generativelanguage.googleapis.com/upload/v1beta/files",
-                        headers={
-                            "x-goog-api-key": GEMINI_KEY,
-                            "X-Goog-Upload-Protocol": "resumable",
-                            "X-Goog-Upload-Command": "start",
-                            "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
-                            "X-Goog-Upload-Header-Content-Type": mime_type,
-                            "Content-Type": "application/json",
-                        },
-                        json={"file": {"display_name": uploaded_video.name}},
-                        timeout=60,
-                    )
-                    start.raise_for_status()
-                    upload_url = start.headers.get("X-Goog-Upload-URL")
-                    if not upload_url:
-                        raise RuntimeError("Gemini video upload URL రాలేదు.")
-                    finish = requests.post(
-                        upload_url,
-                        headers={
-                            "X-Goog-Upload-Offset": "0",
-                            "X-Goog-Upload-Command": "upload, finalize",
-                            "Content-Length": str(len(video_bytes)),
-                        },
-                        data=video_bytes,
-                        timeout=300,
-                    )
-                    finish.raise_for_status()
-                    finish_data = finish.json()
-                    if isinstance(finish_data, dict):
-                        file_info = finish_data.get("file", finish_data)
-                    else:
-                        raise RuntimeError("Gemini upload response అర్థం కాలేదు. మళ్లీ ప్రయత్నించు.")
-                    if not isinstance(file_info, dict):
-                        raise RuntimeError("Gemini file response సరైన formatలో లేదు.")
-                    file_uri = file_info.get("uri")
-                    file_state = file_info.get("state", "PROCESSING")
-                    if not file_uri:
-                        raise RuntimeError("Gemini వీడియో ఫైల్ URI రాలేదు.")
-                    st.session_state["gemini_video_file_cache"] = {
-                        "fingerprint": video_fingerprint,
-                        "uri": file_uri,
-                        "name": file_info.get("name", ""),
-                        "state": file_state,
-                        "created_at": time.time(),
-                    }
-                if file_state in ("FAILED", "CANCELLED"):
-                    st.session_state.pop("gemini_video_file_cache", None)
-                    raise RuntimeError("Gemini video processing విఫలమైంది. మరోసారి Generate నొక్కి మళ్లీ ప్రయత్నించు.")
-                for _ in range(90):
-                    if file_state == "ACTIVE":
-                        break
-                    time.sleep(2)
-                    if not file_info.get("name"):
-                        raise RuntimeError("Gemini saved video file statusను తనిఖీ చేయలేకపోయింది. మళ్లీ upload చేయి.")
-                    check = requests.get(
-                        "https://generativelanguage.googleapis.com/v1beta/" + file_info["name"],
-                        headers={"x-goog-api-key": GEMINI_KEY},
-                        timeout=30,
-                    )
-                    check.raise_for_status()
-                    file_info = check.json()
-                    file_state = file_info.get("state", "")
-                    st.session_state["gemini_video_file_cache"]["state"] = file_state
-                if file_state != "ACTIVE":
-                    raise RuntimeError("Gemini వీడియోను 3 నిమిషాల్లో ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
-                file_uri = file_info.get("uri", file_uri)
-                recent_video_context = ""
-                if isinstance(locals().get("rows"), list):
-                    recent_video_context = "\n".join(f"- {row.get('Title', '')} ({row.get('Views', 0)} views)" for row in rows[:10])
-                ai_prompt = f"""You are the publishing strategist for Macherla Guru, a Telugu AI entertainment channel with original Telugu comedy, PJ Babu/Yamalokam stories and mixed AI entertainment.
+                    raise RuntimeError("Gemini upload response అర్థం కాలేదు. మళ్లీ ప్రయత్నించు.")
+                if not isinstance(file_info, dict):
+                    raise RuntimeError("Gemini file response సరైన formatలో లేదు.")
+                file_uri = file_info.get("uri")
+                file_state = file_info.get("state", "PROCESSING")
+                if not file_uri:
+                    raise RuntimeError("Gemini వీడియో ఫైల్ URI రాలేదు.")
+                st.session_state["gemini_video_file_cache"] = {
+                    "fingerprint": video_fingerprint,
+                    "uri": file_uri,
+                    "name": file_info.get("name", ""),
+                    "state": file_state,
+                    "created_at": time.time(),
+                }
+            if file_state in ("FAILED", "CANCELLED"):
+                st.session_state.pop("gemini_video_file_cache", None)
+                raise RuntimeError("Gemini video processing విఫలమైంది. మరోసారి Generate నొక్కి మళ్లీ ప్రయత్నించు.")
+            for _ in range(90):
+                if file_state == "ACTIVE":
+                    break
+                time.sleep(2)
+                if not file_info.get("name"):
+                    raise RuntimeError("Gemini saved video file statusను తనిఖీ చేయలేకపోయింది. మళ్లీ upload చేయి.")
+                check = requests.get(
+                    "https://generativelanguage.googleapis.com/v1beta/" + file_info["name"],
+                    headers={"x-goog-api-key": GEMINI_KEY},
+                    timeout=30,
+                )
+                check.raise_for_status()
+                file_info = check.json()
+                file_state = file_info.get("state", "")
+                st.session_state["gemini_video_file_cache"]["state"] = file_state
+            if file_state != "ACTIVE":
+                raise RuntimeError("Gemini వీడియోను 3 నిమిషాల్లో ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
+            file_uri = file_info.get("uri", file_uri)
+            recent_video_context = ""
+            if isinstance(locals().get("rows"), list):
+                recent_video_context = "\n".join(f"- {row.get('Title', '')} ({row.get('Views', 0)} views)" for row in rows[:10])
+            ai_prompt = f"""You are the publishing strategist for Macherla Guru, a Telugu AI entertainment channel with original Telugu comedy, PJ Babu/Yamalokam stories and mixed AI entertainment.
 Watch the supplied video carefully. Identify its actual topic, visible characters, actions, spoken language, mood and strongest audience hook. The video is the source of truth; never assume a recurring character appears unless actually visible or heard.
 Recent channel winners (inspiration only; never copy): {recent_video_context or "Not available"}.
 Return ONLY one valid JSON object with these exact keys:
@@ -691,174 +696,174 @@ instagram_caption (strong curiosity hook, natural caption matching actual scene,
 youtube_caption (distinct curiosity hook, not a copy of Instagram, then exactly 5 relevant hashtags),
 category (most suitable YouTube category label), keywords (array of relevant Telugu, English and transliterated search phrases).
 Caption language/script must match the video's spoken language. For Telugu, use natural conversational Telugu, not awkward literal translations. Do not insert unrelated foreign-script characters. Never invent dialogue, punchlines, characters, events, results or promises. Return no Markdown fences or commentary."""
-                # Retry temporary Gemini capacity/service errors; keep the manual button
-                # as the only trigger so video selection never starts a surprise API call.
-                gen, used_text_model = gemini_generate_content(
-                    contents=[{"parts": [
-                        {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
-                        {"text": ai_prompt},
-                    ]}],
-                    generation_config={
-                        "temperature": 0.45,
-                        "responseMimeType": "application/json",
-                        "responseJsonSchema": {
-                            "type": "object",
-                            "properties": {
-                                "title": {"type": "string"},
-                                "title_options": {"type": "array", "items": {"type": "string"}},
-                                "description": {"type": "string"},
-                                "tags": {"type": "array", "items": {"type": "string"}},
-                                "hashtags": {"type": "array", "items": {"type": "string"}},
-                                "thumbnail_prompt": {"type": "string"},
-                                "instagram_caption": {"type": "string"},
-                                "youtube_caption": {"type": "string"},
-                                "category": {"type": "string"},
-                                "keywords": {"type": "array", "items": {"type": "string"}}
-                            },
-                            "required": ["title", "title_options", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"],
-                            "additionalProperties": False
-                        }
-                    },
-                    timeout=240,
-                    retries_per_model=2,
-                )
-                if gen is None:
-                    raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
-                if used_text_model != GEMINI_TEXT_MODELS[0]:
-                    st.info(f"Primary Gemini model అందుబాటులో లేదు; fallback {used_text_model} ఉపయోగించబడింది.")
-                if not gen.ok:
-                    try:
-                        gemini_error = gen.json().get("error", {}).get("message", gen.text)
-                    except Exception:
-                        gemini_error = gen.text
-                    raise RuntimeError(f"Gemini API ({gen.status_code}): {gemini_error}")
-                gen_data = gen.json()
-                if not isinstance(gen_data, dict):
-                    raise RuntimeError("Gemini response format తప్పుగా వచ్చింది. మళ్లీ Generate చేయి.")
-                candidates = gen_data.get("candidates", [])
-                text_parts = []
-                for candidate in candidates if isinstance(candidates, list) else []:
-                    if not isinstance(candidate, dict):
-                        continue
-                    content_obj = candidate.get("content", {})
-                    if not isinstance(content_obj, dict):
-                        continue
-                    parts = content_obj.get("parts", [])
-                    for part in parts if isinstance(parts, list) else []:
-                        if isinstance(part, dict) and isinstance(part.get("text"), str):
-                            text_parts.append(part["text"])
-                generated_text = "\n".join(text_parts).strip()
-                if not generated_text:
-                    raise RuntimeError("Gemini నుంచి వివరాలు రాలేదు. API response: " + json.dumps(gen_data, ensure_ascii=False)[:700])
-                generated_text = generated_text.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
-                # Gemini may occasionally wrap the requested object in a one-item
-                # array or a named envelope. Normalize these safe response shapes.
-                metadata = json.loads(generated_text)
-                if isinstance(metadata, list):
-                    metadata = next((item for item in metadata if isinstance(item, dict)), None)
-                if isinstance(metadata, dict):
-                    for wrapper_key in ("metadata", "result", "data", "output"):
-                        wrapped = metadata.get(wrapper_key)
-                        if isinstance(wrapped, dict):
-                            metadata = wrapped
-                            break
-                if not isinstance(metadata, dict):
-                    raise RuntimeError(
-                        "Gemini సమాధానం JSON object రూపంలో రాలేదు. Generate మళ్లీ నొక్కి ప్రయత్నించు. "
-                        "వివరాలు ఇంకా రాకపోతే Gemini API response format తనిఖీ చేయాలి."
-                    )
-                for field in ["title", "title_options", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"]:
-                    metadata.setdefault(field, [] if field in ["title_options", "tags", "hashtags", "keywords"] else "")
-                if not isinstance(metadata.get("tags"), list):
-                    metadata["tags"] = [str(metadata["tags"])]
-                if not isinstance(metadata.get("keywords"), list):
-                    metadata["keywords"] = [str(metadata["keywords"])] if metadata["keywords"] else []
-                metadata["title"] = str(metadata.get("title", "")).strip()[:100]
-                metadata["title_options"] = normalize_title_options(metadata.get("title_options", []), fallback_title=metadata["title"], limit=5)
-                if not metadata["title_options"]:
-                    raise RuntimeError("Gemini title ఖాళీగా ఇచ్చింది. మళ్లీ Generate చేయి.")
-                metadata["title"] = metadata["title_options"][0]
-                metadata["hashtags"] = normalize_hashtags(metadata.get("hashtags"))
-                metadata["tags"] = normalize_youtube_tags(metadata.get("tags", []) + metadata.get("keywords", []))
-                metadata["instagram_caption"] = caption_with_five_hashtags(metadata.get("instagram_caption", ""), metadata["hashtags"])
-                metadata["youtube_caption"] = caption_with_five_hashtags(metadata.get("youtube_caption", ""), metadata["hashtags"])
-                metadata["description"] = str(metadata.get("description", "")).strip()
-                st.session_state["ai_video_metadata"] = metadata
-                st.session_state["ai_video_description"] = metadata["description"]
-                st.session_state["ai_video_title"] = metadata["title"]
-                st.session_state["ai_video_title_choice"] = metadata["title"]
-                st.session_state["ai_video_tags"] = ", ".join(metadata["tags"])
-                st.session_state["ai_instagram_caption"] = metadata["instagram_caption"]
-                st.session_state["ai_youtube_caption"] = metadata["youtube_caption"]
-
-                # If the owner has not supplied a thumbnail, ask Gemini image
-                # generation to create one using the actual uploaded video as context.
-                st.session_state["ai_generated_thumbnail_bytes"] = None
-                st.session_state["ai_generated_thumbnail_mime"] = "image/png"
+            # Retry temporary Gemini capacity/service errors; keep the manual button
+            # as the only trigger so video selection never starts a surprise API call.
+            gen, used_text_model = gemini_generate_content(
+                contents=[{"parts": [
+                    {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                    {"text": ai_prompt},
+                ]}],
+                generation_config={
+                    "temperature": 0.45,
+                    "responseMimeType": "application/json",
+                    "responseJsonSchema": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "title_options": {"type": "array", "items": {"type": "string"}},
+                            "description": {"type": "string"},
+                            "tags": {"type": "array", "items": {"type": "string"}},
+                            "hashtags": {"type": "array", "items": {"type": "string"}},
+                            "thumbnail_prompt": {"type": "string"},
+                            "instagram_caption": {"type": "string"},
+                            "youtube_caption": {"type": "string"},
+                            "category": {"type": "string"},
+                            "keywords": {"type": "array", "items": {"type": "string"}}
+                        },
+                        "required": ["title", "title_options", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"],
+                        "additionalProperties": False
+                    }
+                },
+                timeout=240,
+                retries_per_model=2,
+            )
+            if gen is None:
+                raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
+            if used_text_model != GEMINI_TEXT_MODELS[0]:
+                st.info(f"Primary Gemini model అందుబాటులో లేదు; fallback {used_text_model} ఉపయోగించబడింది.")
+            if not gen.ok:
                 try:
-                    thumb_prompt = (
-                        "Create one polished YouTube thumbnail image for this exact video. "
-                        "Use the supplied video as the only source of truth. "
-                        + str(metadata.get("thumbnail_prompt", "")).strip()
-                        + " Make the main subject large, expressive and instantly readable on a phone. "
-                        "Use a cinematic composition, high contrast and crisp details. "
-                        "Do not add text, letters, captions, logos or watermarks. "
-                        "Return an image, not a written prompt."
+                    gemini_error = gen.json().get("error", {}).get("message", gen.text)
+                except Exception:
+                    gemini_error = gen.text
+                raise RuntimeError(f"Gemini API ({gen.status_code}): {gemini_error}")
+            gen_data = gen.json()
+            if not isinstance(gen_data, dict):
+                raise RuntimeError("Gemini response format తప్పుగా వచ్చింది. మళ్లీ Generate చేయి.")
+            candidates = gen_data.get("candidates", [])
+            text_parts = []
+            for candidate in candidates if isinstance(candidates, list) else []:
+                if not isinstance(candidate, dict):
+                    continue
+                content_obj = candidate.get("content", {})
+                if not isinstance(content_obj, dict):
+                    continue
+                parts = content_obj.get("parts", [])
+                for part in parts if isinstance(parts, list) else []:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        text_parts.append(part["text"])
+            generated_text = "\n".join(text_parts).strip()
+            if not generated_text:
+                raise RuntimeError("Gemini నుంచి వివరాలు రాలేదు. API response: " + json.dumps(gen_data, ensure_ascii=False)[:700])
+            generated_text = generated_text.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+            # Gemini may occasionally wrap the requested object in a one-item
+            # array or a named envelope. Normalize these safe response shapes.
+            metadata = json.loads(generated_text)
+            if isinstance(metadata, list):
+                metadata = next((item for item in metadata if isinstance(item, dict)), None)
+            if isinstance(metadata, dict):
+                for wrapper_key in ("metadata", "result", "data", "output"):
+                    wrapped = metadata.get(wrapper_key)
+                    if isinstance(wrapped, dict):
+                        metadata = wrapped
+                        break
+            if not isinstance(metadata, dict):
+                raise RuntimeError(
+                    "Gemini సమాధానం JSON object రూపంలో రాలేదు. Generate మళ్లీ నొక్కి ప్రయత్నించు. "
+                    "వివరాలు ఇంకా రాకపోతే Gemini API response format తనిఖీ చేయాలి."
+                )
+            for field in ["title", "title_options", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"]:
+                metadata.setdefault(field, [] if field in ["title_options", "tags", "hashtags", "keywords"] else "")
+            if not isinstance(metadata.get("tags"), list):
+                metadata["tags"] = [str(metadata["tags"])]
+            if not isinstance(metadata.get("keywords"), list):
+                metadata["keywords"] = [str(metadata["keywords"])] if metadata["keywords"] else []
+            metadata["title"] = str(metadata.get("title", "")).strip()[:100]
+            metadata["title_options"] = normalize_title_options(metadata.get("title_options", []), fallback_title=metadata["title"], limit=5)
+            if not metadata["title_options"]:
+                raise RuntimeError("Gemini title ఖాళీగా ఇచ్చింది. మళ్లీ Generate చేయి.")
+            metadata["title"] = metadata["title_options"][0]
+            metadata["hashtags"] = normalize_hashtags(metadata.get("hashtags"))
+            metadata["tags"] = normalize_youtube_tags(metadata.get("tags", []) + metadata.get("keywords", []))
+            metadata["instagram_caption"] = caption_with_five_hashtags(metadata.get("instagram_caption", ""), metadata["hashtags"])
+            metadata["youtube_caption"] = caption_with_five_hashtags(metadata.get("youtube_caption", ""), metadata["hashtags"])
+            metadata["description"] = str(metadata.get("description", "")).strip()
+            st.session_state["ai_video_metadata"] = metadata
+            st.session_state["ai_video_description"] = metadata["description"]
+            st.session_state["ai_video_title"] = metadata["title"]
+            st.session_state["ai_video_title_choice"] = metadata["title"]
+            st.session_state["ai_video_tags"] = ", ".join(metadata["tags"])
+            st.session_state["ai_instagram_caption"] = metadata["instagram_caption"]
+            st.session_state["ai_youtube_caption"] = metadata["youtube_caption"]
+
+            # If the owner has not supplied a thumbnail, ask Gemini image
+            # generation to create one using the actual uploaded video as context.
+            st.session_state["ai_generated_thumbnail_bytes"] = None
+            st.session_state["ai_generated_thumbnail_mime"] = "image/png"
+            try:
+                thumb_prompt = (
+                    "Create one polished YouTube thumbnail image for this exact video. "
+                    "Use the supplied video as the only source of truth. "
+                    + str(metadata.get("thumbnail_prompt", "")).strip()
+                    + " Make the main subject large, expressive and instantly readable on a phone. "
+                    "Use a cinematic composition, high contrast and crisp details. "
+                    "Do not add text, letters, captions, logos or watermarks. "
+                    "Return an image, not a written prompt."
+                )
+                thumb_response = None
+                thumb_data = {}
+                # Retry transient image-model rate limits with exponential backoff.
+                for thumb_attempt in range(3):
+                    thumb_response = requests.post(
+                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent",
+                        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                        json={
+                            "contents": [{"parts": [
+                                {"text": thumb_prompt},
+                            ]}],
+                            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
+                        },
+                        timeout=240,
                     )
-                    thumb_response = None
-                    thumb_data = {}
-                    # Retry transient image-model rate limits with exponential backoff.
-                    for thumb_attempt in range(3):
-                        thumb_response = requests.post(
-                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent",
-                            headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                            json={
-                                "contents": [{"parts": [
-                                    {"text": thumb_prompt},
-                                ]}],
-                                "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
-                            },
-                            timeout=240,
-                        )
-                        if thumb_response.status_code not in (429, 500, 502, 503, 504) or thumb_attempt == 2:
-                            break
-                        time.sleep(2 ** (thumb_attempt + 1))
-                    if not thumb_response.ok:
-                        try:
-                            thumb_error = thumb_response.json().get("error", {}).get("message", thumb_response.text)
-                        except Exception:
-                            thumb_error = thumb_response.text
-                        raise RuntimeError(f"Gemini Image API ({thumb_response.status_code}): {thumb_error}")
-                    thumb_data = thumb_response.json()
-                    generated_image = None
-                    for thumb_candidate in thumb_data.get("candidates", []):
-                        for thumb_part in thumb_candidate.get("content", {}).get("parts", []):
-                            inline_data = thumb_part.get("inlineData") or thumb_part.get("inline_data")
-                            if isinstance(inline_data, dict) and inline_data.get("data"):
-                                import base64
-                                generated_image = base64.b64decode(inline_data["data"])
-                                st.session_state["ai_generated_thumbnail_mime"] = inline_data.get("mimeType", inline_data.get("mime_type", "image/png"))
-                                break
-                        if generated_image:
+                    if thumb_response.status_code not in (429, 500, 502, 503, 504) or thumb_attempt == 2:
+                        break
+                    time.sleep(2 ** (thumb_attempt + 1))
+                if not thumb_response.ok:
+                    try:
+                        thumb_error = thumb_response.json().get("error", {}).get("message", thumb_response.text)
+                    except Exception:
+                        thumb_error = thumb_response.text
+                    raise RuntimeError(f"Gemini Image API ({thumb_response.status_code}): {thumb_error}")
+                thumb_data = thumb_response.json()
+                generated_image = None
+                for thumb_candidate in thumb_data.get("candidates", []):
+                    for thumb_part in thumb_candidate.get("content", {}).get("parts", []):
+                        inline_data = thumb_part.get("inlineData") or thumb_part.get("inline_data")
+                        if isinstance(inline_data, dict) and inline_data.get("data"):
+                            import base64
+                            generated_image = base64.b64decode(inline_data["data"])
+                            st.session_state["ai_generated_thumbnail_mime"] = inline_data.get("mimeType", inline_data.get("mime_type", "image/png"))
                             break
                     if generated_image:
-                        st.session_state["ai_generated_thumbnail_bytes"] = generated_image
+                        break
+                if generated_image:
+                    st.session_state["ai_generated_thumbnail_bytes"] = generated_image
+                else:
+                    st.warning("Gemini వివరాలు తయారు చేసింది, కానీ ఆటో Thumbnail image రాలేదు. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+            except Exception as thumb_exc:
+                try:
+                    frame_thumbnail = extract_video_frame_thumbnail(uploaded_video)
+                    if frame_thumbnail:
+                        st.session_state["ai_generated_thumbnail_bytes"] = frame_thumbnail
+                        st.session_state["ai_generated_thumbnail_mime"] = "image/jpeg"
+                        st.warning("Gemini Image API Free Tierలో అందుబాటులో లేదు. వీడియోలోని ఒక frameతో ఉచిత fallback thumbnail సిద్ధం చేశాను; కావాలంటే నీ JPG/PNGతో మార్చుకోవచ్చు.")
                     else:
-                        st.warning("Gemini వివరాలు తయారు చేసింది, కానీ ఆటో Thumbnail image రాలేదు. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
-                except Exception as thumb_exc:
-                    try:
-                        frame_thumbnail = extract_video_frame_thumbnail(uploaded_video)
-                        if frame_thumbnail:
-                            st.session_state["ai_generated_thumbnail_bytes"] = frame_thumbnail
-                            st.session_state["ai_generated_thumbnail_mime"] = "image/jpeg"
-                            st.warning("Gemini Image API Free Tierలో అందుబాటులో లేదు. వీడియోలోని ఒక frameతో ఉచిత fallback thumbnail సిద్ధం చేశాను; కావాలంటే నీ JPG/PNGతో మార్చుకోవచ్చు.")
-                        else:
-                            st.warning(f"Gemini వివరాలు సిద్ధం అయ్యాయి. ఆటో Thumbnail తయారీలో సమస్య: {thumb_exc}. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
-                    except Exception as frame_exc:
-                        st.warning(f"Gemini Thumbnail అందుబాటులో లేదు ({thumb_exc}); వీడియో-frame fallback కూడా సాధ్యం కాలేదు ({frame_exc}). JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
-                st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. Thumbnail నువ్వు ఇస్తే అదే; ఇవ్వకపోతే Gemini తయారు చేసినదాన్ని వాడతాం. Upload ముందు Review చేయి.")
-            except Exception as exc:
-                st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
+                        st.warning(f"Gemini వివరాలు సిద్ధం అయ్యాయి. ఆటో Thumbnail తయారీలో సమస్య: {thumb_exc}. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+                except Exception as frame_exc:
+                    st.warning(f"Gemini Thumbnail అందుబాటులో లేదు ({thumb_exc}); వీడియో-frame fallback కూడా సాధ్యం కాలేదు ({frame_exc}). JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+            st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. Thumbnail నువ్వు ఇస్తే అదే; ఇవ్వకపోతే Gemini తయారు చేసినదాన్ని వాడతాం. Upload ముందు Review చేయి.")
+        except Exception as exc:
+            st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
     elif uploaded_video and not GEMINI_KEY:
         st.warning("Gemini API key లేదు. Streamlit Secretsలో GEMINI_API_KEY తనిఖీ చేయి.")
 
