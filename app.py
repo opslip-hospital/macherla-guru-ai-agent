@@ -620,7 +620,7 @@ else:
                                         "thumbnail_prompt", "instagram_caption",
                                         "youtube_caption", "category", "keywords"
                                     ],
-                                    "additionalProperties": false
+                                    "additionalProperties": False
                                 }
                             },
                         },
