@@ -716,19 +716,19 @@ else:
             recent_video_context = ""
             if isinstance(locals().get("rows"), list):
                 recent_video_context = "\n".join(f"- {row.get('Title', '')} ({row.get('Views', 0)} views)" for row in rows[:10])
-            ai_prompt = f"""You are the publishing strategist for Macherla Guru, a Telugu AI entertainment channel with original Telugu comedy, PJ Babu/Yamalokam stories and mixed AI entertainment.
-Watch the supplied video carefully. Identify its actual topic, visible characters, actions, spoken language, mood and strongest audience hook. The video is the source of truth; never assume a recurring character appears unless actually visible or heard.
-Recent channel winners (inspiration only; never copy): {recent_video_context or "Not available"}.
-Return ONLY one valid JSON object with these exact keys:
-title (strongest keyword-first title, maximum 100 characters), title_options (exactly 5 distinct title choices, each under 100 characters, clear topic immediately, varied hooks, no misleading clickbait),
-description (accurate natural Telugu; first two lines must hook viewers and name the topic; concise CTA; app appends hashtags),
-tags (12-18 distinct YouTube search tags using Telugu, English and useful Telugu transliteration; only video-relevant terms; never add PJ Babu/Yamalokam/Spider-Man unless actually in this video),
-hashtags (exactly 5 unique relevant hashtags with #; use #AIMowa #TeluguComedy #AIComedy when relevant plus two topic tags),
-thumbnail_prompt (cinematic prompt matching actual video aspect ratio; only actual characters/props; no text),
-instagram_caption (strong curiosity hook, natural caption matching actual scene, then exactly 5 relevant hashtags),
-youtube_caption (distinct curiosity hook, not a copy of Instagram, then exactly 5 relevant hashtags),
-category (most suitable YouTube category label), keywords (array of relevant Telugu, English and transliterated search phrases).
-Caption language/script must match the video's spoken language. For Telugu, use natural conversational Telugu, not awkward literal translations. Do not insert unrelated foreign-script characters. Never invent dialogue, punchlines, characters, events, results or promises. Return no Markdown fences or commentary."""
+            ai_prompt = f"""You are the senior YouTube SEO editor for Macherla Guru. The channel publishes Telugu AI entertainment, comedy, stories and occasional AI/technology demonstrations.
+FIRST classify this exact video by its main subject and format (comedy/story/AI tutorial/technology/other). Watch the supplied video carefully. Extract its actual topic, key searchable entities/tools, visible characters, actions, spoken language, mood and strongest truthful hook. The supplied video is the source of truth.
+IMPORTANT: Optimize for THIS video's audience, not the channel's other uploads. Recent channel winners are optional inspiration for hook style only; never copy their topic, keywords or characters into this video's metadata. Ignore the recent-video list if it is unrelated: {recent_video_context or "Not available"}.
+SEO QUALITY RULES:
+- Put the clearest high-intent topic keyword near the beginning of the title. Make it specific and compelling, readable on a phone, and truthful. Avoid vague phrases such as "అద్భుతమైన వీడియో" or keyword stuffing.
+- Provide 5 genuinely different title options: a direct searchable title, a curiosity hook, a benefit/result angle (only if shown), a Telugu-first option, and a concise mixed Telugu-English option. Do not make unsupported viral/trending claims.
+- Description: write 2 strong opening lines that naturally include the main topic and what viewers will learn/see; then 2-4 useful details grounded in the video and a simple CTA. No generic filler.
+- Tags: provide 12-18 distinct search phrases, mixing English, Telugu script and natural Telugu transliteration where useful. Include exact tool/product names only when clearly present. Avoid near-duplicates and unrelated broad tags.
+- Hashtags: exactly 5 unique, relevant hashtags. Always include #AIMowa. Choose the remaining four based on this video's subject. Use #TeluguComedy and/or #AIComedy only for comedy/entertainment videos; for AI/technology tutorials use relevant tags such as #TeluguTech, #AITools or #VideoEditing instead. Never force a comedy hashtag onto a technology tutorial.
+- Instagram and YouTube captions must have different opening hooks, sound natural and conversational, and accurately describe the actual clip. Each must contain exactly the same 5 selected hashtags.
+- thumbnail_prompt: cinematic and specific to the actual video, matching its aspect ratio; only actual characters/props; no text or watermark.
+- category: most suitable YouTube category label. keywords: useful search phrases in Telugu, English and transliteration.
+Caption language/script must match the video's spoken language. For Telugu, use natural conversational Telugu, not awkward literal translations. Do not insert unrelated foreign-script characters. Never invent dialogue, punchlines, characters, events, results or promises. Never imply guaranteed views or virality. Return no Markdown fences or commentary."""
             # Retry temporary Gemini capacity/service errors; keep the manual button
             # as the only trigger so video selection never starts a surprise API call.
             gen, used_text_model = gemini_generate_content(
