@@ -34,7 +34,7 @@ jobs:
           tags = namespace["normalize_hashtags"](["#one", "#two", "#three", "#four", "#five", "#six"])
           assert len(tags) == 5 and all(tag.startswith("#") for tag in tags)
           titles = namespace["normalize_title_options"](["Title A", "Title A", "Title B"], fallback_title="Best Title")
-          assert titles == ["Title A", "Title B", "Best Title"] or titles == ["Title A", "Title B"]
+          assert titles == ["Best Title", "Title A", "Title B"]
           youtube_tags = namespace["normalize_youtube_tags"](["x" * 300, "y" * 300])
           assert sum(map(len, youtube_tags)) + max(0, len(youtube_tags) - 1) <= 500
           description, clipped = namespace["build_youtube_description"]("తెలుగు" * 2000, tags)
