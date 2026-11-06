@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "claude-issues-fixes-*"
+  pull_request:
 
 permissions:
   contents: read
