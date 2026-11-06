@@ -64,10 +64,10 @@ def normalize_youtube_tags(values, max_chars=500):
 def build_youtube_description(description, hashtags, max_bytes=5000):
     body = str(description or "").strip()
     hashtag_line = " ".join(normalize_hashtags(hashtags))
-    combined = (body + "\\n\\n" + hashtag_line).strip() if body else hashtag_line
+    combined = (body + "\n\n" + hashtag_line).strip() if body else hashtag_line
     if len(combined.encode("utf-8")) <= max_bytes:
         return combined, False
-    suffix = ("\\n\\n" + hashtag_line).encode("utf-8")
+    suffix = ("\n\n" + hashtag_line).encode("utf-8")
     available = max(0, max_bytes - len(suffix))
     clipped = body.encode("utf-8")[:available].decode("utf-8", errors="ignore").rstrip()
     return (clipped + suffix.decode("utf-8")).strip(), True
@@ -87,9 +87,9 @@ def youtube_category_id(label):
 
 def caption_with_five_hashtags(caption, hashtags):
     import re
-    text = re.sub(r"(?:^|\\s)#[\\w\\u0080-\\uffff]+", "", str(caption or "")).strip()
+    text = re.sub(r"(?:^|\s)#[\w\u0080-\uffff]+", "", str(caption or "")).strip()
     tags = normalize_hashtags(hashtags)
-    return (text + "\\n\\n" + " ".join(tags)).strip() if text else " ".join(tags)
+    return (text + "\n\n" + " ".join(tags)).strip() if text else " ".join(tags)
 
 
 st.set_page_config(page_title="Macherla Guru AI Manager", page_icon="🎬", layout="wide")
@@ -1434,7 +1434,19 @@ Rules:
 - Do not invent channel analytics or guarantee views. Use recent video context only as inspiration, never copy it.
 - For thumbnail prompts, specify 9:16 or 16:9 only when appropriate, 4K cinematic 3D CGI, clear expressions, readable composition, and no unwanted text. Show only the characters and props needed for this exact story; keep PJ Babu and Yama large, recognizable, and visually balanced.
 Return clean headings and ready-to-use output.
-FINAL MODE-SCOPE OVERRIDE: The selected Requested output controls the response. For "YouTube Shorts Title + SEO", return only title options, keyword-first SEO description, tags, exactly five relevant hashtags, and a concise hook/caption; do not include a Flow prompt, script, PJ Babu/Yama locks, or thumbnail instructions unless asked. For "Thumbnail Prompt", return only the image prompt and composition guidance. For "Weekly Content Calendar", return only the requested calendar. Use PJ Babu/Yama/Flow character and continuity constraints only for "PJ Babu కామెడీ స్క్రిప్ట్" and "Complete Video Package", or when explicitly requested.
+"""
+                if content_type not in ["PJ Babu కామెడీ స్క్రిప్ట్", "Complete Video Package"]:
+                    prompt = f"""
+You are the Macherla Guru Telugu AI entertainment channel's content strategist.
+Selected output: {content_type}
+Topic: {topic}
+Extra instructions: {extra or "None"}
+Recent channel context (inspiration only; never copy): {recent_context or "Not available"}
+For YouTube Shorts Title + SEO: give 3 distinct keyword-first title options (each <=100 characters), mark the strongest option, write a natural Telugu SEO description with the main topic in its first two lines and a short CTA, provide 12-18 relevant search tags including useful Telugu/English transliterations, exactly 5 unique topic-relevant hashtags (include #AIMowa #TeluguComedy #AIComedy when relevant plus two topic tags), and one curiosity-hook caption. No keyword stuffing, unrelated tags, fabricated claims, script, Flow prompt, character locks, or thumbnail instructions.
+For Thumbnail Prompt: return only one detailed image prompt tailored to the supplied topic, with appropriate 9:16 or 16:9 framing, clear subject hierarchy, cinematic 4K 3D CGI where suitable, and no text, watermark, or unrequested characters/props.
+For Weekly Content Calendar: create a practical 7-day calendar with distinct original Telugu AI entertainment ideas, opening hooks, and suggested formats; do not repeat recent video ideas.
+Use natural Telugu for spoken/caption text. Do not insert unrelated foreign-script characters. Do not guarantee views or claim an algorithm outcome.
+Return only the selected format with clean headings.
 """
                 with st.spinner("Gemini మీ కంటెంట్ తయారు చేస్తోంది..."):
                     request_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
