@@ -647,7 +647,7 @@ else:
                 file_uri = file_info.get("uri", file_uri)
                 recent_video_context = ""
                 if isinstance(locals().get("rows"), list):
-                    recent_video_context = "\\n".join(f"- {row.get('Title', '')} ({row.get('Views', 0)} views)" for row in rows[:10])
+                    recent_video_context = "\n".join(f"- {row.get('Title', '')} ({row.get('Views', 0)} views)" for row in rows[:10])
                 ai_prompt = f"""You are the publishing strategist for Macherla Guru, a Telugu AI entertainment channel with original Telugu comedy, PJ Babu/Yamalokam stories and mixed AI entertainment.
 Watch the supplied video carefully. Identify its actual topic, visible characters, actions, spoken language, mood and strongest audience hook. The video is the source of truth; never assume a recurring character appears unless actually visible or heard.
 Recent channel winners (inspiration only; never copy): {recent_video_context or "Not available"}.
