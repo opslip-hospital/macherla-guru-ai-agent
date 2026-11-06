@@ -870,8 +870,9 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 )
                 if description_truncated:
                     st.warning("YouTube Description 5,000 UTF-8 bytes పరిమితిలోకి కుదించబడింది; ఐదు hashtags చివరలో ఉంచబడ్డాయి.")
+                uploaded_video.seek(0)
                 media = MediaIoBaseUpload(
-                    io.BytesIO(uploaded_video.getvalue()),
+                    uploaded_video,
                     mimetype=uploaded_video.type or "video/mp4",
                     chunksize=8 * 1024 * 1024,
                     resumable=True,
