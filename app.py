@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import time
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -18,6 +19,37 @@ except Exception:
     GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
 BASE = "https://www.googleapis.com/youtube/v3"
+
+GEMINI_TEXT_MODELS = ("gemini-3.8-flash", "gemini-3.5-flash-lite")
+
+
+def gemini_generate_content(contents, generation_config, timeout=(15, 180), retries_per_model=2):
+    """Gemini text generation with bounded retries and a stable-model fallback."""
+    last_response = None
+    for model in GEMINI_TEXT_MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for attempt in range(retries_per_model + 1):
+            try:
+                response = requests.post(url, headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}, json={"contents": contents, "generationConfig": generation_config}, timeout=timeout)
+            except requests.Timeout:
+                if attempt < retries_per_model:
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                raise
+            last_response = response
+            if response.ok:
+                return response, model
+            try:
+                error_text = response.json().get("error", {}).get("message", response.text).casefold()
+            except Exception:
+                error_text = response.text.casefold()
+            if response.status_code == 404 or (response.status_code == 400 and ("model not found" in error_text or "not supported" in error_text)) or response.status_code == 429:
+                break
+            if response.status_code in (500, 502, 503, 504) and attempt < retries_per_model:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            return response, model
+    return last_response, GEMINI_TEXT_MODELS[-1]
 
 # Metadata validation helpers: keep YouTube limits and brand hashtags consistent.
 def normalize_hashtags(values, fallback=None):
@@ -42,6 +74,33 @@ def normalize_hashtags(values, fallback=None):
     return ["#" + item for item in result[:5]]
 
 
+
+
+def normalize_title_options(values, fallback_title="", limit=5):
+    if isinstance(values, str):
+        values = values.splitlines()
+    if not isinstance(values, (list, tuple)):
+        values = []
+    result, seen = [], set()
+    for value in values:
+        title = " ".join(str(value or "").split()).strip()[:100].rstrip()
+        if title and title.casefold() not in seen:
+            result.append(title)
+            seen.add(title.casefold())
+        if len(result) >= limit:
+            break
+    fallback = " ".join(str(fallback_title or "").split()).strip()[:100].rstrip()
+    if fallback and fallback.casefold() not in seen:
+        result.insert(0, fallback)
+    return result[:limit]
+
+
+
+
+def sync_selected_title():
+    st.session_state["ai_video_title"] = st.session_state.get("ai_video_title_choice", "")
+
+
 def normalize_youtube_tags(values, max_chars=500):
     if isinstance(values, str):
         values = values.split(",")
@@ -63,7 +122,7 @@ def normalize_youtube_tags(values, max_chars=500):
 
 def build_youtube_description(description, hashtags, max_bytes=5000):
     import re
-    body = re.sub(r"(?:^|\\s)#[\\w\\u0080-\\uffff]+", "", str(description or "")).strip()
+    body = re.sub(r"(?:^|\s)#[\w\u0080-\uffff]+", "", str(description or "")).strip()
     hashtag_line = " ".join(normalize_hashtags(hashtags))
     combined = (body + "\n\n" + hashtag_line).strip() if body else hashtag_line
     if len(combined.encode("utf-8")) <= max_bytes:
@@ -498,7 +557,7 @@ else:
     if uploaded_video and GEMINI_KEY:
         if st.button("✨ ఈ వీడియో చూసి Title, SEO, Tags, Captions తయారు చేయి", type="primary"):
             try:
-                video_bytes = uploaded_video.getvalue()
+                video_bytes = uploaded_video.getbuffer()
                 mime_type = uploaded_video.type or "video/mp4"
                 import time
                 video_fingerprint = hashlib.sha256(video_bytes).hexdigest()
@@ -586,52 +645,57 @@ else:
                 if file_state != "ACTIVE":
                     raise RuntimeError("Gemini వీడియోను 3 నిమిషాల్లో ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
                 file_uri = file_info.get("uri", file_uri)
-                ai_prompt = """You are the publishing strategist for Macherla Guru, a Telugu AI entertainment channel focused on original Telugu comedy, PJ Babu/Yamalokam stories, and mixed AI entertainment. Watch the supplied video carefully. Identify its actual topic, visible characters, actions, spoken language, mood, and strongest audience hook. Do not invent events, people, dialogue, claims, or hashtags unrelated to the video. Return ONLY one valid JSON object with these exact keys: title (natural Telugu or clear Telugu-English search phrase, topic keyword near the beginning, max 100 characters), description (accurate natural Telugu description, topic keywords naturally in the first two lines, concise CTA; no keyword stuffing), tags (12-18 distinct relevant YouTube search tags), hashtags (exactly 5 unique relevant hashtags, each beginning with #; include #AIMowa, #TeluguComedy and #AIComedy when relevant, plus two specific topic tags), thumbnail_prompt (detailed cinematic 9:16 or 16:9 choice based on video, only actual video characters, no text), instagram_caption (curiosity hook in natural Telugu followed by exactly 5 relevant hashtags), youtube_caption (curiosity hook in natural Telugu followed by exactly 5 relevant hashtags), category (one YouTube category label such as Comedy, Entertainment, Film & Animation, People & Blogs, or Education), keywords (array of relevant Telugu and English/transliterated search phrases). Keep every claim accurate to the supplied video. Do not include characters from unrelated scripts/languages. Spoken Telugu must be written in Telugu script; English search tags may use Latin script. Return no Markdown fences or commentary."""
+                recent_video_context = ""
+                if isinstance(locals().get("rows"), list):
+                    recent_video_context = "\\n".join(f"- {row.get('Title', '')} ({row.get('Views', 0)} views)" for row in rows[:10])
+                ai_prompt = f"""You are the publishing strategist for Macherla Guru, a Telugu AI entertainment channel with original Telugu comedy, PJ Babu/Yamalokam stories and mixed AI entertainment.
+Watch the supplied video carefully. Identify its actual topic, visible characters, actions, spoken language, mood and strongest audience hook. The video is the source of truth; never assume a recurring character appears unless actually visible or heard.
+Recent channel winners (inspiration only; never copy): {recent_video_context or "Not available"}.
+Return ONLY one valid JSON object with these exact keys:
+title (strongest keyword-first title, maximum 100 characters), title_options (exactly 5 distinct title choices, each under 100 characters, clear topic immediately, varied hooks, no misleading clickbait),
+description (accurate natural Telugu; first two lines must hook viewers and name the topic; concise CTA; app appends hashtags),
+tags (12-18 distinct YouTube search tags using Telugu, English and useful Telugu transliteration; only video-relevant terms; never add PJ Babu/Yamalokam/Spider-Man unless actually in this video),
+hashtags (exactly 5 unique relevant hashtags with #; use #AIMowa #TeluguComedy #AIComedy when relevant plus two topic tags),
+thumbnail_prompt (cinematic prompt matching actual video aspect ratio; only actual characters/props; no text),
+instagram_caption (strong curiosity hook, natural caption matching actual scene, then exactly 5 relevant hashtags),
+youtube_caption (distinct curiosity hook, not a copy of Instagram, then exactly 5 relevant hashtags),
+category (most suitable YouTube category label), keywords (array of relevant Telugu, English and transliterated search phrases).
+Caption language/script must match the video's spoken language. For Telugu, use natural conversational Telugu, not awkward literal translations. Do not insert unrelated foreign-script characters. Never invent dialogue, punchlines, characters, events, results or promises. Return no Markdown fences or commentary."""
                 # Retry temporary Gemini capacity/service errors; keep the manual button
                 # as the only trigger so video selection never starts a surprise API call.
-                gen = None
-                for gen_attempt in range(4):
-                    gen = requests.post(
-                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
-                        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                        json={
-                            "contents": [{"parts": [
-                                {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
-                                {"text": ai_prompt},
-                            ]}],
-                            "generationConfig": {
-                                "temperature": 0.45,
-                                "responseMimeType": "application/json",
-                                "responseJsonSchema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "title": {"type": "string"},
-                                        "description": {"type": "string"},
-                                        "tags": {"type": "array", "items": {"type": "string"}},
-                                        "hashtags": {"type": "array", "items": {"type": "string"}},
-                                        "thumbnail_prompt": {"type": "string"},
-                                        "instagram_caption": {"type": "string"},
-                                        "youtube_caption": {"type": "string"},
-                                        "category": {"type": "string"},
-                                        "keywords": {"type": "array", "items": {"type": "string"}}
-                                    },
-                                    "required": [
-                                        "title", "description", "tags", "hashtags",
-                                        "thumbnail_prompt", "instagram_caption",
-                                        "youtube_caption", "category", "keywords"
-                                    ],
-                                    "additionalProperties": False
-                                }
+                gen, used_text_model = gemini_generate_content(
+                    contents=[{"parts": [
+                        {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                        {"text": ai_prompt},
+                    ]}],
+                    generation_config={
+                        "temperature": 0.45,
+                        "responseMimeType": "application/json",
+                        "responseJsonSchema": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "title_options": {"type": "array", "items": {"type": "string"}},
+                                "description": {"type": "string"},
+                                "tags": {"type": "array", "items": {"type": "string"}},
+                                "hashtags": {"type": "array", "items": {"type": "string"}},
+                                "thumbnail_prompt": {"type": "string"},
+                                "instagram_caption": {"type": "string"},
+                                "youtube_caption": {"type": "string"},
+                                "category": {"type": "string"},
+                                "keywords": {"type": "array", "items": {"type": "string"}}
                             },
-                        },
-                        timeout=240,
-                    )
-                    if gen.status_code not in (429, 500, 502, 503, 504) or gen_attempt == 3:
-                        break
-                    st.warning(f"Gemini server busy ({gen.status_code}). మళ్లీ ప్రయత్నిస్తోంది... ({gen_attempt + 1}/4)")
-                    time.sleep(2 ** (gen_attempt + 1))
+                            "required": ["title", "title_options", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"],
+                            "additionalProperties": False
+                        }
+                    },
+                    timeout=240,
+                    retries_per_model=2,
+                )
                 if gen is None:
                     raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
+                if used_text_model != GEMINI_TEXT_MODELS[0]:
+                    st.info(f"Primary Gemini model అందుబాటులో లేదు; fallback {used_text_model} ఉపయోగించబడింది.")
                 if not gen.ok:
                     try:
                         gemini_error = gen.json().get("error", {}).get("message", gen.text)
@@ -673,15 +737,17 @@ else:
                         "Gemini సమాధానం JSON object రూపంలో రాలేదు. Generate మళ్లీ నొక్కి ప్రయత్నించు. "
                         "వివరాలు ఇంకా రాకపోతే Gemini API response format తనిఖీ చేయాలి."
                     )
-                for field in ["title", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"]:
-                    metadata.setdefault(field, [] if field in ["tags", "hashtags", "keywords"] else "")
+                for field in ["title", "title_options", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"]:
+                    metadata.setdefault(field, [] if field in ["title_options", "tags", "hashtags", "keywords"] else "")
                 if not isinstance(metadata.get("tags"), list):
                     metadata["tags"] = [str(metadata["tags"])]
                 if not isinstance(metadata.get("keywords"), list):
                     metadata["keywords"] = [str(metadata["keywords"])] if metadata["keywords"] else []
                 metadata["title"] = str(metadata.get("title", "")).strip()[:100]
-                if not metadata["title"]:
+                metadata["title_options"] = normalize_title_options(metadata.get("title_options", []), fallback_title=metadata["title"], limit=5)
+                if not metadata["title_options"]:
                     raise RuntimeError("Gemini title ఖాళీగా ఇచ్చింది. మళ్లీ Generate చేయి.")
+                metadata["title"] = metadata["title_options"][0]
                 metadata["hashtags"] = normalize_hashtags(metadata.get("hashtags"))
                 metadata["tags"] = normalize_youtube_tags(metadata.get("tags", []) + metadata.get("keywords", []))
                 metadata["instagram_caption"] = caption_with_five_hashtags(metadata.get("instagram_caption", ""), metadata["hashtags"])
@@ -690,6 +756,7 @@ else:
                 st.session_state["ai_video_metadata"] = metadata
                 st.session_state["ai_video_description"] = metadata["description"]
                 st.session_state["ai_video_title"] = metadata["title"]
+                st.session_state["ai_video_title_choice"] = metadata["title"]
                 st.session_state["ai_video_tags"] = ", ".join(metadata["tags"])
                 st.session_state["ai_instagram_caption"] = metadata["instagram_caption"]
                 st.session_state["ai_youtube_caption"] = metadata["youtube_caption"]
@@ -762,7 +829,14 @@ else:
         st.session_state["ai_video_metadata"] = {}
     if metadata:
         st.markdown("#### ✨ Gemini తయారు చేసిన వివరాలు — Review చేయి")
-        st.text_input("YouTube Title", key="ai_video_title", max_chars=100)
+        title_options = normalize_title_options(metadata.get("title_options", []), fallback_title=metadata.get("title", ""), limit=5)
+        if title_options:
+            if st.session_state.get("ai_video_title_choice") not in title_options:
+                st.session_state["ai_video_title_choice"] = title_options[0]
+            if "ai_video_title" not in st.session_state:
+                st.session_state["ai_video_title"] = title_options[0]
+            st.selectbox("Gemini Title ఎంపికలు", options=title_options, key="ai_video_title_choice", on_change=sync_selected_title)
+        st.text_input("YouTube Title (ఎడిట్ చేయవచ్చు)", key="ai_video_title", max_chars=100)
         st.text_area("Description", key="ai_video_description", height=140)
         st.text_input("Tags (comma separated)", key="ai_video_tags")
         st.write("**Hashtags:** " + " ".join(normalize_hashtags(metadata.get("hashtags", []))))
@@ -796,8 +870,9 @@ else:
                 )
                 if description_truncated:
                     st.warning("YouTube Description 5,000 UTF-8 bytes పరిమితిలోకి కుదించబడింది; ఐదు hashtags చివరలో ఉంచబడ్డాయి.")
+                uploaded_video.seek(0)
                 media = MediaIoBaseUpload(
-                    io.BytesIO(uploaded_video.getvalue()),
+                    uploaded_video,
                     mimetype=uploaded_video.type or "video/mp4",
                     chunksize=8 * 1024 * 1024,
                     resumable=True,
@@ -1331,15 +1406,14 @@ else:
 నిర్దిష్టమైన actionable advice ఇవ్వు; views guarantee చేయవద్దు.
 """
                         with st.spinner("Gemini నిజమైన analytics ఆధారంగా Telugu diagnosis తయారు చేస్తోంది..."):
-                            growth_response = requests.post(
-                                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
-                                headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                                json={
-                                    "contents": [{"parts": [{"text": growth_prompt}]}],
-                                    "generationConfig": {"temperature": 0.35, "maxOutputTokens": 3000},
-                                },
+                            growth_response, growth_model = gemini_generate_content(
+                                contents=[{"parts": [{"text": growth_prompt}]}],
+                                generation_config={"temperature": 0.35, "maxOutputTokens": 3000},
                                 timeout=(15, 180),
+                                retries_per_model=2,
                             )
+                            if growth_model != GEMINI_TEXT_MODELS[0]:
+                                st.info(f"Analytics diagnosis కోసం fallback Gemini model {growth_model} ఉపయోగించబడింది.")
                             if not growth_response.ok:
                                 try:
                                     growth_error = growth_response.json().get("error", {}).get("message", growth_response.text)
@@ -1468,33 +1542,25 @@ Selected output: {content_type}
 Topic: {topic}
 Extra instructions: {extra or "None"}
 Recent channel context (inspiration only; never copy): {recent_context or "Not available"}
-For YouTube Shorts Title + SEO: give 3 distinct keyword-first title options (each <=100 characters), mark the strongest option, write a natural Telugu SEO description with the main topic in its first two lines and a short CTA, provide 12-18 relevant search tags including useful Telugu/English transliterations, exactly 5 unique topic-relevant hashtags (include #AIMowa #TeluguComedy #AIComedy when relevant plus two topic tags), and one curiosity-hook caption. No keyword stuffing, unrelated tags, fabricated claims, script, Flow prompt, character locks, or thumbnail instructions.
+For YouTube Shorts Title + SEO: give 5 distinct keyword-first title options (each <=100 characters), mark the strongest option, write a natural Telugu SEO description with the main topic in its first two lines and a short CTA, provide 12-18 relevant search tags including useful Telugu/English transliterations, exactly 5 unique topic-relevant hashtags (include #AIMowa #TeluguComedy #AIComedy when relevant plus two topic tags), and one curiosity-hook caption. No keyword stuffing, unrelated tags, fabricated claims, script, Flow prompt, character locks, or thumbnail instructions.
 For Thumbnail Prompt: return only one detailed image prompt tailored to the supplied topic, with appropriate 9:16 or 16:9 framing, clear subject hierarchy, cinematic 4K 3D CGI where suitable, and no text, watermark, or unrequested characters/props.
 For Weekly Content Calendar: create a practical 7-day calendar with distinct original Telugu AI entertainment ideas, opening hooks, and suggested formats; do not repeat recent video ideas.
 Use natural Telugu for spoken/caption text. Do not insert unrelated foreign-script characters. Do not guarantee views or claim an algorithm outcome.
 Return only the selected format with clean headings.
 """
                 with st.spinner("Gemini మీ కంటెంట్ తయారు చేస్తోంది..."):
-                    request_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
-                    request_headers = {"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}
                     request_body = {
                         "contents": [{"parts": [{"text": prompt}]}],
                         "generationConfig": {"temperature": 0.85, "maxOutputTokens": 8192}
                     }
-                    # Allow extra time for a cold start and retry once on a transient timeout.
-                    response = None
-                    for attempt in range(2):
-                        try:
-                            response = requests.post(
-                                request_url,
-                                headers=request_headers,
-                                json=request_body,
-                                timeout=(15, 180)
-                            )
-                            break
-                        except requests.Timeout:
-                            if attempt == 1:
-                                raise
+                    response, studio_model = gemini_generate_content(
+                        contents=request_body["contents"],
+                        generation_config=request_body["generationConfig"],
+                        timeout=(15, 180),
+                        retries_per_model=2,
+                    )
+                    if studio_model != GEMINI_TEXT_MODELS[0]:
+                        st.info(f"Content Studio కోసం fallback Gemini model {studio_model} ఉపయోగించబడింది.")
                     if not response.ok:
                         try:
                             detail = response.json().get("error", {}).get("message", response.text)
