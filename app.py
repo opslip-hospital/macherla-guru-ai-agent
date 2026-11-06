@@ -19,6 +19,79 @@ except Exception:
 
 BASE = "https://www.googleapis.com/youtube/v3"
 
+# Metadata validation helpers: keep YouTube limits and brand hashtags consistent.
+def normalize_hashtags(values, fallback=None):
+    if isinstance(values, str):
+        values = values.replace(",", " ").split()
+    if not isinstance(values, (list, tuple)):
+        values = []
+    result = []
+    for value in values:
+        tag = "".join(ch for ch in str(value or "").strip().lstrip("#").strip() if ch.isalnum() or ch == "_")
+        if tag and tag.casefold() not in {item.casefold() for item in result}:
+            result.append(tag)
+        if len(result) == 5:
+            break
+    fallback = fallback or ["AIMowa", "TeluguComedy", "AIComedy", "FunnyReels", "TeluguShorts"]
+    for value in fallback:
+        tag = "".join(ch for ch in str(value).strip().lstrip("#") if ch.isalnum() or ch == "_")
+        if tag and tag.casefold() not in {item.casefold() for item in result}:
+            result.append(tag)
+        if len(result) == 5:
+            break
+    return ["#" + item for item in result[:5]]
+
+
+def normalize_youtube_tags(values, max_chars=500):
+    if isinstance(values, str):
+        values = values.split(",")
+    if not isinstance(values, (list, tuple)):
+        return []
+    result, seen, used = [], set(), 0
+    for value in values:
+        tag = " ".join(str(value or "").split()).strip()
+        if not tag or tag.casefold() in seen:
+            continue
+        extra = len(tag) + (1 if result else 0)
+        if used + extra > max_chars:
+            continue
+        result.append(tag)
+        seen.add(tag.casefold())
+        used += extra
+    return result
+
+
+def build_youtube_description(description, hashtags, max_bytes=5000):
+    body = str(description or "").strip()
+    hashtag_line = " ".join(normalize_hashtags(hashtags))
+    combined = (body + "\\n\\n" + hashtag_line).strip() if body else hashtag_line
+    if len(combined.encode("utf-8")) <= max_bytes:
+        return combined, False
+    suffix = ("\\n\\n" + hashtag_line).encode("utf-8")
+    available = max(0, max_bytes - len(suffix))
+    clipped = body.encode("utf-8")[:available].decode("utf-8", errors="ignore").rstrip()
+    return (clipped + suffix.decode("utf-8")).strip(), True
+
+
+def youtube_category_id(label):
+    value = str(label or "").strip().casefold()
+    categories = {
+        "film & animation": "1", "autos & vehicles": "2", "music": "10",
+        "pets & animals": "15", "sports": "17", "travel & events": "19",
+        "gaming": "20", "people & blogs": "22", "comedy": "23",
+        "entertainment": "24", "news & politics": "25", "howto & style": "26",
+        "education": "27", "science & technology": "28", "nonprofits & activism": "29",
+    }
+    return categories.get(value, "23")
+
+
+def caption_with_five_hashtags(caption, hashtags):
+    import re
+    text = re.sub(r"(?:^|\\s)#[\\w\\u0080-\\uffff]+", "", str(caption or "")).strip()
+    tags = normalize_hashtags(hashtags)
+    return (text + "\\n\\n" + " ".join(tags)).strip() if text else " ".join(tags)
+
+
 st.set_page_config(page_title="Macherla Guru AI Manager", page_icon="🎬", layout="wide")
 st.title("🎬 Macherla Guru — YouTube AI Manager")
 st.caption("Free-first channel dashboard • Telugu AI entertainment")
@@ -466,7 +539,7 @@ else:
                 if not file_uri:
                     raise RuntimeError("Gemini వీడియో ఫైల్ URI రాలేదు.")
                 import time
-                for _ in range(30):
+                for _ in range(90):
                     if file_state == "ACTIVE":
                         break
                     time.sleep(2)
@@ -480,7 +553,7 @@ else:
                     file_state = file_info.get("state", "")
                 if file_state != "ACTIVE":
                     raise RuntimeError("Gemini వీడియోను ఇంకా ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
-                ai_prompt = """Watch the supplied video carefully and create ready-to-use YouTube publishing metadata for Macherla Guru, a Telugu AI entertainment channel. Infer the actual subject, characters, actions, spoken language and mood from the video. Do not invent events, people, dialogue or claims not visible/audible. Return ONLY valid JSON with keys: title (catchy Telugu title, max 100 chars), description (natural Telugu description with a short CTA), tags (array of 12-18 relevant tags), hashtags (array of exactly 5 relevant hashtags), thumbnail_prompt (detailed 9:16 or 16:9 choice based on video, cinematic thumbnail prompt showing only actual video characters, no text), instagram_caption (curiosity hook plus exactly 5 hashtags), youtube_caption (curiosity hook plus exactly 5 hashtags), category (short label), keywords (array). Keep title and descriptions accurate to this video."""
+                ai_prompt = """You are the publishing strategist for Macherla Guru, a Telugu AI entertainment channel focused on original Telugu comedy, PJ Babu/Yamalokam stories, and mixed AI entertainment. Watch the supplied video carefully. Identify its actual topic, visible characters, actions, spoken language, mood, and strongest audience hook. Do not invent events, people, dialogue, claims, or hashtags unrelated to the video. Return ONLY one valid JSON object with these exact keys: title (natural Telugu or clear Telugu-English search phrase, topic keyword near the beginning, max 100 characters), description (accurate natural Telugu description, topic keywords naturally in the first two lines, concise CTA; no keyword stuffing), tags (12-18 distinct relevant YouTube search tags), hashtags (exactly 5 unique relevant hashtags, each beginning with #; include #AIMowa, #TeluguComedy and #AIComedy when relevant, plus two specific topic tags), thumbnail_prompt (detailed cinematic 9:16 or 16:9 choice based on video, only actual video characters, no text), instagram_caption (curiosity hook in natural Telugu followed by exactly 5 relevant hashtags), youtube_caption (curiosity hook in natural Telugu followed by exactly 5 relevant hashtags), category (one YouTube category label such as Comedy, Entertainment, Film & Animation, People & Blogs, or Education), keywords (array of relevant Telugu and English/transliterated search phrases). Keep every claim accurate to the supplied video. Do not include characters from unrelated scripts/languages. Spoken Telugu must be written in Telugu script; English search tags may use Latin script. Return no Markdown fences or commentary."""
                 # Retry temporary Gemini capacity/service errors; keep the manual button
                 # as the only trigger so video selection never starts a surprise API call.
                 gen = None
@@ -499,7 +572,7 @@ else:
                     )
                     if gen.status_code not in (429, 500, 502, 503, 504) or gen_attempt == 3:
                         break
-                    st.warning(f"Gemini server busy ({gen.status_code}). మళ్లీ ప్రయత్నిస్తోంది... ({gen_attempt + 1}/3)")
+                    st.warning(f"Gemini server busy ({gen.status_code}). మళ్లీ ప్రయత్నిస్తోంది... ({gen_attempt + 1}/4)")
                     time.sleep(2 ** (gen_attempt + 1))
                 if gen is None:
                     raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
@@ -544,16 +617,26 @@ else:
                         "Gemini సమాధానం JSON object రూపంలో రాలేదు. Generate మళ్లీ నొక్కి ప్రయత్నించు. "
                         "వివరాలు ఇంకా రాకపోతే Gemini API response format తనిఖీ చేయాలి."
                     )
-                for field in ["title", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption"]:
-                    metadata.setdefault(field, [] if field in ["tags", "hashtags"] else "")
+                for field in ["title", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"]:
+                    metadata.setdefault(field, [] if field in ["tags", "hashtags", "keywords"] else "")
                 if not isinstance(metadata.get("tags"), list):
                     metadata["tags"] = [str(metadata["tags"])]
-                if not isinstance(metadata.get("hashtags"), list):
-                    metadata["hashtags"] = [str(metadata["hashtags"])]
+                if not isinstance(metadata.get("keywords"), list):
+                    metadata["keywords"] = [str(metadata["keywords"])] if metadata["keywords"] else []
+                metadata["title"] = str(metadata.get("title", "")).strip()[:100]
+                if not metadata["title"]:
+                    raise RuntimeError("Gemini title ఖాళీగా ఇచ్చింది. మళ్లీ Generate చేయి.")
+                metadata["hashtags"] = normalize_hashtags(metadata.get("hashtags"))
+                metadata["tags"] = normalize_youtube_tags(metadata.get("tags", []) + metadata.get("keywords", []))
+                metadata["instagram_caption"] = caption_with_five_hashtags(metadata.get("instagram_caption", ""), metadata["hashtags"])
+                metadata["youtube_caption"] = caption_with_five_hashtags(metadata.get("youtube_caption", ""), metadata["hashtags"])
+                metadata["description"] = str(metadata.get("description", "")).strip()
                 st.session_state["ai_video_metadata"] = metadata
-                st.session_state["ai_video_description"] = str(metadata.get("description", ""))
-                st.session_state["ai_video_title"] = str(metadata.get("title", ""))[:100]
-                st.session_state["ai_video_tags"] = ", ".join(str(tag) for tag in metadata.get("tags", []))
+                st.session_state["ai_video_description"] = metadata["description"]
+                st.session_state["ai_video_title"] = metadata["title"]
+                st.session_state["ai_video_tags"] = ", ".join(metadata["tags"])
+                st.session_state["ai_instagram_caption"] = metadata["instagram_caption"]
+                st.session_state["ai_youtube_caption"] = metadata["youtube_caption"]
 
                 # If the owner has not supplied a thumbnail, ask Gemini image
                 # generation to create one using the actual uploaded video as context.
@@ -627,15 +710,17 @@ else:
         st.text_input("YouTube Title", key="ai_video_title", max_chars=100)
         st.text_area("Description", key="ai_video_description", height=140)
         st.text_input("Tags (comma separated)", key="ai_video_tags")
-        st.write("**Hashtags:** " + " ".join(metadata.get("hashtags", [])))
+        st.write("**Hashtags:** " + " ".join(normalize_hashtags(metadata.get("hashtags", []))))
+        if "ai_instagram_caption" not in st.session_state:
+            st.session_state["ai_instagram_caption"] = caption_with_five_hashtags(metadata.get("instagram_caption", ""), metadata.get("hashtags", []))
+        if "ai_youtube_caption" not in st.session_state:
+            st.session_state["ai_youtube_caption"] = caption_with_five_hashtags(metadata.get("youtube_caption", ""), metadata.get("hashtags", []))
+        st.text_area("Instagram Caption (edit / copy)", key="ai_instagram_caption", height=110)
+        st.text_area("YouTube Caption (edit / copy)", key="ai_youtube_caption", height=110)
         generated_thumb = st.session_state.get("ai_generated_thumbnail_bytes")
         if generated_thumb:
             st.write("**Gemini తయారు చేసిన Thumbnail Preview (నువ్వు ఇవ్వనప్పుడు):**")
             st.image(generated_thumb, use_container_width=True)
-        st.write("**Instagram Caption:**")
-        st.write(metadata.get("instagram_caption", ""))
-        st.write("**YouTube Caption:**")
-        st.write(metadata.get("youtube_caption", ""))
 
     with st.form("youtube_private_upload_form"):
         upload_thumbnail = st.file_uploader("Thumbnail image (ఐచ్ఛికం)", type=["jpg", "jpeg", "png"])
@@ -650,7 +735,12 @@ else:
         else:
             try:
                 from googleapiclient.errors import HttpError
-                tags = [tag.strip() for tag in upload_tags_text.split(",") if tag.strip()][:500]
+                tags = normalize_youtube_tags(upload_tags_text)
+                upload_description, description_truncated = build_youtube_description(
+                    upload_description, metadata.get("hashtags", [])
+                )
+                if description_truncated:
+                    st.warning("YouTube Description 5,000 UTF-8 bytes పరిమితిలోకి కుదించబడింది; ఐదు hashtags చివరలో ఉంచబడ్డాయి.")
                 media = MediaIoBaseUpload(
                     io.BytesIO(uploaded_video.getvalue()),
                     mimetype=uploaded_video.type or "video/mp4",
@@ -665,7 +755,7 @@ else:
                                 "title": upload_title.strip(),
                                 "description": upload_description,
                                 "tags": tags,
-                                "categoryId": "23",
+                                "categoryId": youtube_category_id(metadata.get("category", "Comedy")),
                             },
                             "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
                         },
@@ -1266,6 +1356,7 @@ Requested output: {content_type}
 Recent public channel video context (use only as inspiration, do not copy):
 {recent_context or 'Not available'}
 Rules:
+- Apply only instructions relevant to the selected output type. PJ Babu/Yama character locks, Google Flow timelines, 10-second lip-sync rules, and thumbnail-cast rules apply only to PJ Babu comedy scripts or Complete Video Package, unless explicitly requested in another mode.
 - Strong hook starts on the very first frame / first spoken line. No slow intro, no dead air, no long pauses.
 - Write all spoken dialogue ONLY in natural Telugu script. Never insert Chinese, Thai, Hindi or other foreign-script characters. Do not translate, shorten or silently alter any user-supplied exact dialogue.
 - Keep a 10-second video realistic: normally use 2-3 short dialogue turns total, only when each line can be spoken naturally in its allotted time. Never force a third line just to meet a quota. Use fewer turns if the joke is stronger that way; do not overcrowd the take.
@@ -1314,13 +1405,14 @@ Rules:
 - Do not invent channel analytics or guarantee views. Use recent video context only as inspiration, never copy it.
 - For thumbnail prompts, specify 9:16 or 16:9 only when appropriate, 4K cinematic 3D CGI, clear expressions, readable composition, and no unwanted text. Show only the characters and props needed for this exact story; keep PJ Babu and Yama large, recognizable, and visually balanced.
 Return clean headings and ready-to-use output.
+FINAL MODE-SCOPE OVERRIDE: The selected Requested output controls the response. For "YouTube Shorts Title + SEO", return only title options, keyword-first SEO description, tags, exactly five relevant hashtags, and a concise hook/caption; do not include a Flow prompt, script, PJ Babu/Yama locks, or thumbnail instructions unless asked. For "Thumbnail Prompt", return only the image prompt and composition guidance. For "Weekly Content Calendar", return only the requested calendar. Use PJ Babu/Yama/Flow character and continuity constraints only for "PJ Babu కామెడీ స్క్రిప్ట్" and "Complete Video Package", or when explicitly requested.
 """
                 with st.spinner("Gemini మీ కంటెంట్ తయారు చేస్తోంది..."):
                     request_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
                     request_headers = {"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}
                     request_body = {
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"temperature": 0.85, "maxOutputTokens": 2400}
+                        "generationConfig": {"temperature": 0.85, "maxOutputTokens": 8192}
                     }
                     # Allow extra time for a cold start and retry once on a transient timeout.
                     response = None
