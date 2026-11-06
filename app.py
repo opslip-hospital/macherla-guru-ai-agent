@@ -499,60 +499,89 @@ else:
             try:
                 video_bytes = uploaded_video.getvalue()
                 mime_type = uploaded_video.type or "video/mp4"
-                start = requests.post(
-                    "https://generativelanguage.googleapis.com/upload/v1beta/files",
-                    headers={
-                        "x-goog-api-key": GEMINI_KEY,
-                        "X-Goog-Upload-Protocol": "resumable",
-                        "X-Goog-Upload-Command": "start",
-                        "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
-                        "X-Goog-Upload-Header-Content-Type": mime_type,
-                        "Content-Type": "application/json",
-                    },
-                    json={"file": {"display_name": uploaded_video.name}},
-                    timeout=60,
-                )
-                start.raise_for_status()
-                upload_url = start.headers.get("X-Goog-Upload-URL")
-                if not upload_url:
-                    raise RuntimeError("Gemini video upload URL రాలేదు.")
-                finish = requests.post(
-                    upload_url,
-                    headers={
-                        "X-Goog-Upload-Offset": "0",
-                        "X-Goog-Upload-Command": "upload, finalize",
-                        "Content-Length": str(len(video_bytes)),
-                    },
-                    data=video_bytes,
-                    timeout=300,
-                )
-                finish.raise_for_status()
-                finish_data = finish.json()
-                if isinstance(finish_data, dict):
-                    file_info = finish_data.get("file", finish_data)
-                else:
-                    raise RuntimeError("Gemini upload response అర్థం కాలేదు. మళ్లీ ప్రయత్నించు.")
-                if not isinstance(file_info, dict):
-                    raise RuntimeError("Gemini file response సరైన formatలో లేదు.")
-                file_uri = file_info.get("uri")
-                file_state = file_info.get("state", "PROCESSING")
-                if not file_uri:
-                    raise RuntimeError("Gemini వీడియో ఫైల్ URI రాలేదు.")
                 import time
+                video_fingerprint = hashlib.sha256(video_bytes).hexdigest()
+                cached_file = st.session_state.get("gemini_video_file_cache", {})
+                cache_valid = (
+                    isinstance(cached_file, dict)
+                    and cached_file.get("fingerprint") == video_fingerprint
+                    and cached_file.get("uri")
+                    and time.time() - cached_file.get("created_at", 0) < 36 * 60 * 60
+                )
+                if cache_valid:
+                    file_info = {
+                        "uri": cached_file["uri"],
+                        "name": cached_file.get("name", ""),
+                        "state": cached_file.get("state", "ACTIVE"),
+                    }
+                    file_uri = file_info["uri"]
+                    file_state = file_info["state"]
+                    st.info("ఈ వీడియో Geminiకి ఇప్పటికే upload అయింది; saved fileని మళ్లీ ఉపయోగిస్తున్నాను.")
+                else:
+                    start = requests.post(
+                        "https://generativelanguage.googleapis.com/upload/v1beta/files",
+                        headers={
+                            "x-goog-api-key": GEMINI_KEY,
+                            "X-Goog-Upload-Protocol": "resumable",
+                            "X-Goog-Upload-Command": "start",
+                            "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
+                            "X-Goog-Upload-Header-Content-Type": mime_type,
+                            "Content-Type": "application/json",
+                        },
+                        json={"file": {"display_name": uploaded_video.name}},
+                        timeout=60,
+                    )
+                    start.raise_for_status()
+                    upload_url = start.headers.get("X-Goog-Upload-URL")
+                    if not upload_url:
+                        raise RuntimeError("Gemini video upload URL రాలేదు.")
+                    finish = requests.post(
+                        upload_url,
+                        headers={
+                            "X-Goog-Upload-Offset": "0",
+                            "X-Goog-Upload-Command": "upload, finalize",
+                            "Content-Length": str(len(video_bytes)),
+                        },
+                        data=video_bytes,
+                        timeout=300,
+                    )
+                    finish.raise_for_status()
+                    finish_data = finish.json()
+                    if isinstance(finish_data, dict):
+                        file_info = finish_data.get("file", finish_data)
+                    else:
+                        raise RuntimeError("Gemini upload response అర్థం కాలేదు. మళ్లీ ప్రయత్నించు.")
+                    if not isinstance(file_info, dict):
+                        raise RuntimeError("Gemini file response సరైన formatలో లేదు.")
+                    file_uri = file_info.get("uri")
+                    file_state = file_info.get("state", "PROCESSING")
+                    if not file_uri:
+                        raise RuntimeError("Gemini వీడియో ఫైల్ URI రాలేదు.")
+                    st.session_state["gemini_video_file_cache"] = {
+                        "fingerprint": video_fingerprint,
+                        "uri": file_uri,
+                        "name": file_info.get("name", ""),
+                        "state": file_state,
+                        "created_at": time.time(),
+                    }
                 for _ in range(90):
                     if file_state == "ACTIVE":
                         break
                     time.sleep(2)
+                    if not file_info.get("name"):
+                        raise RuntimeError("Gemini saved video file statusను తనిఖీ చేయలేకపోయింది. మళ్లీ upload చేయి.")
                     check = requests.get(
-                        "https://generativelanguage.googleapis.com/v1beta/" + file_info.get("name", ""),
+                        "https://generativelanguage.googleapis.com/v1beta/" + file_info["name"],
                         headers={"x-goog-api-key": GEMINI_KEY},
                         timeout=30,
                     )
                     check.raise_for_status()
                     file_info = check.json()
                     file_state = file_info.get("state", "")
+                    st.session_state["gemini_video_file_cache"]["state"] = file_state
                 if file_state != "ACTIVE":
-                    raise RuntimeError("Gemini వీడియోను ఇంకా ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
+                    raise RuntimeError("Gemini వీడియోను 3 నిమిషాల్లో ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
+                file_uri = file_info.get("uri", file_uri)
                 ai_prompt = """You are the publishing strategist for Macherla Guru, a Telugu AI entertainment channel focused on original Telugu comedy, PJ Babu/Yamalokam stories, and mixed AI entertainment. Watch the supplied video carefully. Identify its actual topic, visible characters, actions, spoken language, mood, and strongest audience hook. Do not invent events, people, dialogue, claims, or hashtags unrelated to the video. Return ONLY one valid JSON object with these exact keys: title (natural Telugu or clear Telugu-English search phrase, topic keyword near the beginning, max 100 characters), description (accurate natural Telugu description, topic keywords naturally in the first two lines, concise CTA; no keyword stuffing), tags (12-18 distinct relevant YouTube search tags), hashtags (exactly 5 unique relevant hashtags, each beginning with #; include #AIMowa, #TeluguComedy and #AIComedy when relevant, plus two specific topic tags), thumbnail_prompt (detailed cinematic 9:16 or 16:9 choice based on video, only actual video characters, no text), instagram_caption (curiosity hook in natural Telugu followed by exactly 5 relevant hashtags), youtube_caption (curiosity hook in natural Telugu followed by exactly 5 relevant hashtags), category (one YouTube category label such as Comedy, Entertainment, Film & Animation, People & Blogs, or Education), keywords (array of relevant Telugu and English/transliterated search phrases). Keep every claim accurate to the supplied video. Do not include characters from unrelated scripts/languages. Spoken Telugu must be written in Telugu script; English search tags may use Latin script. Return no Markdown fences or commentary."""
                 # Retry temporary Gemini capacity/service errors; keep the manual button
                 # as the only trigger so video selection never starts a surprise API call.
@@ -1436,12 +1465,17 @@ FINAL MODE-SCOPE OVERRIDE: The selected Requested output controls the response. 
                         st.error(f"Gemini API error ({response.status_code}): {detail}")
                     else:
                         payload = response.json()
+                        candidates = payload.get("candidates", [])
+                        finish_reasons = [candidate.get("finishReason") for candidate in candidates if isinstance(candidate, dict)]
                         generated = "\n".join(
                             part.get("text", "")
-                            for candidate in payload.get("candidates", [])
+                            for candidate in candidates
+                            if isinstance(candidate, dict)
                             for part in candidate.get("content", {}).get("parts", [])
-                            if part.get("text")
+                            if isinstance(part, dict) and part.get("text")
                         ).strip()
+                        if generated and "MAX_TOKENS" in finish_reasons:
+                            st.warning("Gemini సమాధానం token పరిమితి వద్ద కట్ అయింది. అవసరమైతే చిన్న outputగా మళ్లీ Generate చేయి.")
                         if generated:
                             st.markdown(generated)
                             st.download_button(
