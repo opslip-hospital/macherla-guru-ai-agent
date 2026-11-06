@@ -24,32 +24,65 @@ GEMINI_TEXT_MODELS = ("gemini-3.8-flash", "gemini-3.5-flash-lite")
 
 
 def gemini_generate_content(contents, generation_config, timeout=(15, 180), retries_per_model=2):
-    """Gemini text generation with bounded retries and a stable-model fallback."""
+    """Retry transient Gemini failures, then try the next configured text model."""
     last_response = None
+    last_exception = None
+    transient_statuses = (408, 429, 500, 502, 503, 504)
     for model in GEMINI_TEXT_MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         for attempt in range(retries_per_model + 1):
             try:
-                response = requests.post(url, headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}, json={"contents": contents, "generationConfig": generation_config}, timeout=timeout)
-            except requests.Timeout:
+                response = requests.post(
+                    url,
+                    headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                    json={"contents": contents, "generationConfig": generation_config},
+                    timeout=timeout,
+                )
+            except requests.RequestException as exc:
+                last_exception = exc
                 if attempt < retries_per_model:
                     time.sleep(2 ** (attempt + 1))
                     continue
-                raise
+                # A network failure on this model must not prevent trying fallback.
+                break
+
             last_response = response
             if response.ok:
                 return response, model
+
             try:
                 error_text = response.json().get("error", {}).get("message", response.text).casefold()
             except Exception:
                 error_text = response.text.casefold()
-            if response.status_code == 404 or (response.status_code == 400 and ("model not found" in error_text or "not supported" in error_text)) or response.status_code == 429:
+
+            model_unavailable = response.status_code == 404 or (
+                response.status_code == 400 and
+                ("model not found" in error_text or "not supported" in error_text)
+            )
+            if model_unavailable:
                 break
-            if response.status_code in (500, 502, 503, 504) and attempt < retries_per_model:
-                time.sleep(2 ** (attempt + 1))
-                continue
+
+            if response.status_code in transient_statuses:
+                if attempt < retries_per_model:
+                    retry_after = response.headers.get("Retry-After", "")
+                    try:
+                        delay = min(20, max(1, int(float(retry_after)))) if retry_after else 2 ** (attempt + 1)
+                    except (TypeError, ValueError):
+                        delay = 2 ** (attempt + 1)
+                    time.sleep(delay)
+                    continue
+                # Important: after the final retry, continue to the fallback model.
+                break
+
+            # Non-transient errors (for example invalid credentials or malformed
+            # requests) should be returned immediately rather than masked.
             return response, model
-    return last_response, GEMINI_TEXT_MODELS[-1]
+
+    if last_response is not None:
+        return last_response, GEMINI_TEXT_MODELS[-1]
+    if last_exception is not None:
+        raise last_exception
+    return None, GEMINI_TEXT_MODELS[-1]
 
 # Metadata validation helpers: keep YouTube limits and brand hashtags consistent.
 def normalize_hashtags(values, fallback=None):
