@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import time
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -1404,15 +1405,14 @@ Caption language/script must match the video's spoken language. For Telugu, use 
 నిర్దిష్టమైన actionable advice ఇవ్వు; views guarantee చేయవద్దు.
 """
                         with st.spinner("Gemini నిజమైన analytics ఆధారంగా Telugu diagnosis తయారు చేస్తోంది..."):
-                            growth_response = requests.post(
-                                "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
-                                headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                                json={
-                                    "contents": [{"parts": [{"text": growth_prompt}]}],
-                                    "generationConfig": {"temperature": 0.35, "maxOutputTokens": 3000},
-                                },
+                            growth_response, growth_model = gemini_generate_content(
+                                contents=[{"parts": [{"text": growth_prompt}]}],
+                                generation_config={"temperature": 0.35, "maxOutputTokens": 3000},
                                 timeout=(15, 180),
+                                retries_per_model=2,
                             )
+                            if growth_model != GEMINI_TEXT_MODELS[0]:
+                                st.info(f"Analytics diagnosis కోసం fallback Gemini model {growth_model} ఉపయోగించబడింది.")
                             if not growth_response.ok:
                                 try:
                                     growth_error = growth_response.json().get("error", {}).get("message", growth_response.text)
@@ -1548,26 +1548,18 @@ Use natural Telugu for spoken/caption text. Do not insert unrelated foreign-scri
 Return only the selected format with clean headings.
 """
                 with st.spinner("Gemini మీ కంటెంట్ తయారు చేస్తోంది..."):
-                    request_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
-                    request_headers = {"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}
                     request_body = {
                         "contents": [{"parts": [{"text": prompt}]}],
                         "generationConfig": {"temperature": 0.85, "maxOutputTokens": 8192}
                     }
-                    # Allow extra time for a cold start and retry once on a transient timeout.
-                    response = None
-                    for attempt in range(2):
-                        try:
-                            response = requests.post(
-                                request_url,
-                                headers=request_headers,
-                                json=request_body,
-                                timeout=(15, 180)
-                            )
-                            break
-                        except requests.Timeout:
-                            if attempt == 1:
-                                raise
+                    response, studio_model = gemini_generate_content(
+                        contents=request_body["contents"],
+                        generation_config=request_body["generationConfig"],
+                        timeout=(15, 180),
+                        retries_per_model=2,
+                    )
+                    if studio_model != GEMINI_TEXT_MODELS[0]:
+                        st.info(f"Content Studio కోసం fallback Gemini model {studio_model} ఉపయోగించబడింది.")
                     if not response.ok:
                         try:
                             detail = response.json().get("error", {}).get("message", response.text)
