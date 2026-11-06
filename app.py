@@ -62,7 +62,8 @@ def normalize_youtube_tags(values, max_chars=500):
 
 
 def build_youtube_description(description, hashtags, max_bytes=5000):
-    body = str(description or "").strip()
+    import re
+    body = re.sub(r"(?:^|\\s)#[\\w\\u0080-\\uffff]+", "", str(description or "")).strip()
     hashtag_line = " ".join(normalize_hashtags(hashtags))
     combined = (body + "\n\n" + hashtag_line).strip() if body else hashtag_line
     if len(combined.encode("utf-8")) <= max_bytes:
@@ -564,6 +565,9 @@ else:
                         "state": file_state,
                         "created_at": time.time(),
                     }
+                if file_state in ("FAILED", "CANCELLED"):
+                    st.session_state.pop("gemini_video_file_cache", None)
+                    raise RuntimeError("Gemini video processing విఫలమైంది. మరోసారి Generate నొక్కి మళ్లీ ప్రయత్నించు.")
                 for _ in range(90):
                     if file_state == "ACTIVE":
                         break
@@ -686,11 +690,10 @@ else:
                     # Retry transient image-model rate limits with exponential backoff.
                     for thumb_attempt in range(3):
                         thumb_response = requests.post(
-                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+                            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent",
                             headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
                             json={
                                 "contents": [{"parts": [
-                                    {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
                                     {"text": thumb_prompt},
                                 ]}],
                                 "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
