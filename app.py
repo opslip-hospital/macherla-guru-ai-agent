@@ -2,6 +2,7 @@ import os
 import io
 import json
 import time
+import unicodedata
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -85,6 +86,11 @@ def gemini_generate_content(contents, generation_config, timeout=(15, 180), retr
     return None, GEMINI_TEXT_MODELS[-1]
 
 # Metadata validation helpers: keep YouTube limits and brand hashtags consistent.
+def _is_metadata_tag_character(ch):
+    # Telugu and other Indic scripts use combining vowel signs and viramas.
+    return ch.isalnum() or ch == "_" or unicodedata.category(ch) in {"Mn", "Mc", "Me"}
+
+
 def normalize_hashtags(values, fallback=None):
     if isinstance(values, str):
         values = values.replace(",", " ").split()
@@ -92,14 +98,14 @@ def normalize_hashtags(values, fallback=None):
         values = []
     result = []
     for value in values:
-        tag = "".join(ch for ch in str(value or "").strip().lstrip("#").strip() if ch.isalnum() or ch == "_")
+        tag = "".join(ch for ch in str(value or "").strip().lstrip("#").strip() if _is_metadata_tag_character(ch))
         if tag and tag.casefold() not in {item.casefold() for item in result}:
             result.append(tag)
         if len(result) == 5:
             break
     fallback = fallback or ["AIMowa", "TeluguComedy", "AIComedy", "FunnyReels", "TeluguShorts"]
     for value in fallback:
-        tag = "".join(ch for ch in str(value).strip().lstrip("#") if ch.isalnum() or ch == "_")
+        tag = "".join(ch for ch in str(value).strip().lstrip("#") if _is_metadata_tag_character(ch))
         if tag and tag.casefold() not in {item.casefold() for item in result}:
             result.append(tag)
         if len(result) == 5:
@@ -134,7 +140,7 @@ def sync_selected_title():
     st.session_state["ai_video_title"] = st.session_state.get("ai_video_title_choice", "")
 
 
-def normalize_youtube_tags(values, max_chars=500, max_tags=18):
+def normalize_youtube_tags(values, max_chars=480, max_tags=18):
     if isinstance(values, str):
         values = values.split(",")
     if not isinstance(values, (list, tuple)):
@@ -144,7 +150,8 @@ def normalize_youtube_tags(values, max_chars=500, max_tags=18):
         tag = " ".join(str(value or "").split()).strip()
         if not tag or tag.casefold() in seen:
             continue
-        extra = len(tag) + (1 if result else 0)
+        # YouTube counts the surrounding quote characters for tags containing spaces.
+        extra = len(tag) + (2 if " " in tag else 0) + (1 if result else 0)
         if used + extra > max_chars:
             continue
         result.append(tag)
