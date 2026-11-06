@@ -94,6 +94,12 @@ def normalize_title_options(values, fallback_title="", limit=5):
     return result[:limit]
 
 
+
+
+def sync_selected_title():
+    st.session_state["ai_video_title"] = st.session_state.get("ai_video_title_choice", "")
+
+
 def normalize_youtube_tags(values, max_chars=500):
     if isinstance(values, str):
         values = values.split(",")
@@ -115,7 +121,7 @@ def normalize_youtube_tags(values, max_chars=500):
 
 def build_youtube_description(description, hashtags, max_bytes=5000):
     import re
-    body = re.sub(r"(?:^|\\s)#[\\w\\u0080-\\uffff]+", "", str(description or "")).strip()
+    body = re.sub(r"(?:^|\s)#[\w\u0080-\uffff]+", "", str(description or "")).strip()
     hashtag_line = " ".join(normalize_hashtags(hashtags))
     combined = (body + "\n\n" + hashtag_line).strip() if body else hashtag_line
     if len(combined.encode("utf-8")) <= max_bytes:
@@ -826,9 +832,9 @@ Caption language/script must match the video's spoken language. For Telugu, use 
         if title_options:
             if st.session_state.get("ai_video_title_choice") not in title_options:
                 st.session_state["ai_video_title_choice"] = title_options[0]
-            chosen_title = st.selectbox("Gemini Title ఎంపికలు", options=title_options, key="ai_video_title_choice")
-            if chosen_title:
-                st.session_state["ai_video_title"] = chosen_title
+            if "ai_video_title" not in st.session_state:
+                st.session_state["ai_video_title"] = title_options[0]
+            st.selectbox("Gemini Title ఎంపికలు", options=title_options, key="ai_video_title_choice", on_change=sync_selected_title)
         st.text_input("YouTube Title (ఎడిట్ చేయవచ్చు)", key="ai_video_title", max_chars=100)
         st.text_area("Description", key="ai_video_description", height=140)
         st.text_input("Tags (comma separated)", key="ai_video_tags")
