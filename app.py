@@ -133,6 +133,36 @@ def build_youtube_description(description, hashtags, max_bytes=5000):
     return (clipped + suffix.decode("utf-8")).strip(), True
 
 
+def extract_video_frame_thumbnail(uploaded_file):
+    """Build a free JPEG thumbnail fallback from a representative video frame."""
+    import av
+    original_position = uploaded_file.tell()
+    container = None
+    try:
+        uploaded_file.seek(0)
+        container = av.open(uploaded_file)
+        video_stream = next((stream for stream in container.streams if stream.type == "video"), None)
+        if video_stream is None:
+            return None
+        if video_stream.duration:
+            container.seek(max(0, int(video_stream.duration * 0.35)), stream=video_stream, backward=True, any_frame=False)
+        frame = next(container.decode(video=0), None)
+        if frame is None:
+            container.seek(0)
+            frame = next(container.decode(video=0), None)
+        if frame is None:
+            return None
+        image = frame.to_image()
+        image.thumbnail((1280, 1280))
+        output = io.BytesIO()
+        image.save(output, format="JPEG", quality=90, optimize=True)
+        return output.getvalue()
+    finally:
+        if container is not None:
+            container.close()
+        uploaded_file.seek(original_position)
+
+
 def youtube_category_id(label):
     value = str(label or "").strip().casefold()
     categories = {
@@ -816,7 +846,16 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     else:
                         st.warning("Gemini వివరాలు తయారు చేసింది, కానీ ఆటో Thumbnail image రాలేదు. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
                 except Exception as thumb_exc:
-                    st.warning(f"Gemini వివరాలు సిద్ధం అయ్యాయి. ఆటో Thumbnail తయారీలో సమస్య: {thumb_exc}. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+                    try:
+                        frame_thumbnail = extract_video_frame_thumbnail(uploaded_video)
+                        if frame_thumbnail:
+                            st.session_state["ai_generated_thumbnail_bytes"] = frame_thumbnail
+                            st.session_state["ai_generated_thumbnail_mime"] = "image/jpeg"
+                            st.warning("Gemini Image API Free Tierలో అందుబాటులో లేదు. వీడియోలోని ఒక frameతో ఉచిత fallback thumbnail సిద్ధం చేశాను; కావాలంటే నీ JPG/PNGతో మార్చుకోవచ్చు.")
+                        else:
+                            st.warning(f"Gemini వివరాలు సిద్ధం అయ్యాయి. ఆటో Thumbnail తయారీలో సమస్య: {thumb_exc}. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
+                    except Exception as frame_exc:
+                        st.warning(f"Gemini Thumbnail అందుబాటులో లేదు ({thumb_exc}); వీడియో-frame fallback కూడా సాధ్యం కాలేదు ({frame_exc}). JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
                 st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. Thumbnail నువ్వు ఇస్తే అదే; ఇవ్వకపోతే Gemini తయారు చేసినదాన్ని వాడతాం. Upload ముందు Review చేయి.")
             except Exception as exc:
                 st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
