@@ -134,7 +134,7 @@ def sync_selected_title():
     st.session_state["ai_video_title"] = st.session_state.get("ai_video_title_choice", "")
 
 
-def normalize_youtube_tags(values, max_chars=500):
+def normalize_youtube_tags(values, max_chars=500, max_tags=18):
     if isinstance(values, str):
         values = values.split(",")
     if not isinstance(values, (list, tuple)):
@@ -150,6 +150,8 @@ def normalize_youtube_tags(values, max_chars=500):
         result.append(tag)
         seen.add(tag.casefold())
         used += extra
+        if len(result) >= max_tags:
+            break
     return result
 
 
@@ -833,6 +835,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
             # generation to create one using the actual uploaded video as context.
             st.session_state["ai_generated_thumbnail_bytes"] = None
             st.session_state["ai_generated_thumbnail_mime"] = "image/png"
+            st.session_state["ai_thumbnail_source"] = "none"
             try:
                 thumb_prompt = (
                     "Create one polished YouTube thumbnail image for this exact video. "
@@ -881,6 +884,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                         break
                 if generated_image:
                     st.session_state["ai_generated_thumbnail_bytes"] = generated_image
+                    st.session_state["ai_thumbnail_source"] = "gemini_generated"
                 else:
                     st.warning("Gemini వివరాలు తయారు చేసింది, కానీ ఆటో Thumbnail image రాలేదు. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
             except Exception as thumb_exc:
@@ -889,12 +893,13 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     if frame_thumbnail:
                         st.session_state["ai_generated_thumbnail_bytes"] = frame_thumbnail
                         st.session_state["ai_generated_thumbnail_mime"] = "image/jpeg"
+                        st.session_state["ai_thumbnail_source"] = "video_frame_fallback"
                         st.warning("Gemini Image API Free Tierలో అందుబాటులో లేదు. వీడియోలోని ఒక frameతో ఉచిత fallback thumbnail సిద్ధం చేశాను; కావాలంటే నీ JPG/PNGతో మార్చుకోవచ్చు.")
                     else:
                         st.warning(f"Gemini వివరాలు సిద్ధం అయ్యాయి. ఆటో Thumbnail తయారీలో సమస్య: {thumb_exc}. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
                 except Exception as frame_exc:
                     st.warning(f"Gemini Thumbnail అందుబాటులో లేదు ({thumb_exc}); వీడియో-frame fallback కూడా సాధ్యం కాలేదు ({frame_exc}). JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
-            st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. Thumbnail నువ్వు ఇస్తే అదే; ఇవ్వకపోతే Gemini తయారు చేసినదాన్ని వాడతాం. Upload ముందు Review చేయి.")
+            st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. నీ JPG/PNG ఇస్తే అదే thumbnailగా వాడతాం; లేకపోతే అందుబాటులో ఉన్న thumbnailను ఉపయోగిస్తాం. Upload ముందు Review చేయి.")
         except Exception as exc:
             st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
     elif uploaded_video and not GEMINI_KEY:
@@ -925,7 +930,13 @@ Caption language/script must match the video's spoken language. For Telugu, use 
         st.text_area("YouTube Caption (edit / copy)", key="ai_youtube_caption", height=110)
         generated_thumb = st.session_state.get("ai_generated_thumbnail_bytes")
         if generated_thumb:
-            st.write("**Gemini తయారు చేసిన Thumbnail Preview (నువ్వు ఇవ్వనప్పుడు):**")
+            thumbnail_source = st.session_state.get("ai_thumbnail_source", "none")
+            if thumbnail_source == "video_frame_fallback":
+                st.write("**వీడియోలోని frameతో చేసిన ఉచిత Thumbnail Preview:**")
+            elif thumbnail_source == "gemini_generated":
+                st.write("**Gemini AI తయారు చేసిన Thumbnail Preview:**")
+            else:
+                st.write("**Thumbnail Preview:**")
             st.image(generated_thumb, use_container_width=True)
 
     with st.form("youtube_private_upload_form"):
