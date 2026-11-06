@@ -26,11 +26,12 @@ jobs:
           import ast
           from pathlib import Path
           tree = ast.parse(Path("app.py").read_text(encoding="utf-8"))
-          names = {"normalize_hashtags", "normalize_title_options", "normalize_youtube_tags", "build_youtube_description", "youtube_category_id", "caption_with_five_hashtags"}
+          names = {"_is_metadata_tag_character", "normalize_hashtags", "normalize_title_options", "normalize_youtube_tags", "build_youtube_description", "youtube_category_id", "caption_with_five_hashtags"}
           nodes = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names]
           assert {node.name for node in nodes} == names
           module = ast.Module(body=nodes, type_ignores=[])
-          namespace = {}
+          import unicodedata
+          namespace = {"unicodedata": unicodedata}
           exec(compile(module, "metadata_helpers", "exec"), namespace)
           tags = namespace["normalize_hashtags"](["#one", "#two", "#three", "#four", "#five", "#six"])
           assert len(tags) == 5 and all(tag.startswith("#") for tag in tags)
