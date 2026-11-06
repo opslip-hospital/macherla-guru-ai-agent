@@ -1,0 +1,45 @@
+name: Validate YouTube Manager fixes
+
+on:
+  push:
+    branches:
+      - "claude-issues-fixes-*"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile app.py
+        run: python -m py_compile app.py
+      - name: Test metadata helper limits
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          tree = ast.parse(Path("app.py").read_text(encoding="utf-8"))
+          names = {"normalize_hashtags", "normalize_youtube_tags", "build_youtube_description", "youtube_category_id", "caption_with_five_hashtags"}
+          nodes = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names]
+          assert {node.name for node in nodes} == names
+          module = ast.Module(body=nodes, type_ignores=[])
+          namespace = {}
+          exec(compile(module, "metadata_helpers", "exec"), namespace)
+          tags = namespace["normalize_hashtags"](["#one", "#two", "#three", "#four", "#five", "#six"])
+          assert len(tags) == 5 and all(tag.startswith("#") for tag in tags)
+          youtube_tags = namespace["normalize_youtube_tags"](["x" * 300, "y" * 300])
+          assert sum(map(len, youtube_tags)) + max(0, len(youtube_tags) - 1) <= 500
+          description, clipped = namespace["build_youtube_description"]("తెలుగు" * 2000, tags)
+          assert len(description.encode("utf-8")) <= 5000 and clipped
+          assert len([part for part in description.split() if part.startswith("#")]) == 5
+          assert namespace["youtube_category_id"]("Comedy") == "23"
+          caption = namespace["caption_with_five_hashtags"]("Hook #old #old2", tags)
+          assert len([part for part in caption.split() if part.startswith("#")]) == 5
+          print("metadata helper tests passed")
+          PY
