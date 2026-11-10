@@ -577,16 +577,23 @@ else:
     schedule_scope = "https://www.googleapis.com/auth/youtube.force-ssl"
     granted_scopes = set()
     scope_check_error = None
-    try:
-        token_check = requests.get(
-            "https://oauth2.googleapis.com/tokeninfo",
-            params={"access_token": owner_creds.token},
-            timeout=15,
-        )
-        token_check.raise_for_status()
-        granted_scopes = set(token_check.json().get("scope", "").split())
-    except Exception as exc:
-        scope_check_error = exc
+    scope_cache = st.session_state.get("granted_scopes_cache") or {}
+    if scope_cache.get("token") == owner_creds.token and time.time() - scope_cache.get("at", 0) < 600:
+        granted_scopes = set(scope_cache.get("scopes", []))
+    else:
+        try:
+            token_check = requests.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"access_token": owner_creds.token},
+                timeout=15,
+            )
+            token_check.raise_for_status()
+            granted_scopes = set(token_check.json().get("scope", "").split())
+            st.session_state["granted_scopes_cache"] = {
+                "token": owner_creds.token, "at": time.time(), "scopes": sorted(granted_scopes),
+            }
+        except Exception as exc:
+            scope_check_error = exc
 
     if schedule_scope in granted_scopes:
         st.success("✅ Google Schedule/Publish permission verified. You can schedule approved videos.")
@@ -969,7 +976,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 media = MediaIoBaseUpload(
                     uploaded_video,
                     mimetype=uploaded_video.type or "video/mp4",
-                    chunksize=8 * 1024 * 1024,
+                    chunksize=4 * 1024 * 1024,
                     resumable=True,
                 )
                 with st.spinner("YouTubeకి Private వీడియో Upload అవుతోంది..."):
@@ -987,8 +994,27 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                         media_body=media,
                     )
                     result = None
+                    failures = 0
+                    upload_progress = st.progress(0, text="YouTubeకి Upload మొదలైంది...")
                     while result is None:
-                        _, result = request.next_chunk()
+                        try:
+                            status, result = request.next_chunk(num_retries=5)
+                        except HttpError as http_exc:
+                            if http_exc.resp.status in (500, 502, 503, 504) and failures < 5:
+                                failures += 1
+                                time.sleep(2 ** failures)
+                                continue
+                            raise
+                        except (ConnectionError, TimeoutError, OSError):
+                            if failures >= 5:
+                                raise
+                            failures += 1
+                            time.sleep(2 ** failures)
+                            continue
+                        if status:
+                            pct = min(int(status.progress() * 100), 99)
+                            upload_progress.progress(pct, text=f"YouTubeకి Upload అవుతోంది... {pct}%")
+                    upload_progress.progress(100, text="Upload పూర్తయింది ✅")
                 new_video_id = result["id"]
                 st.session_state["last_uploaded_video_id"] = new_video_id
                 st.session_state["last_uploaded_video_title"] = upload_title.strip()
@@ -1023,7 +1049,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
         st.subheader("నీ Approval కోసం")
         st.write(st.session_state.get("last_uploaded_video_title", "Uploaded video"))
         st.markdown(f"[YouTube Preview](https://youtu.be/{pending_id})")
-        from datetime import datetime, date, time, timedelta
+        from datetime import datetime, date, time as dt_time, timedelta
         from zoneinfo import ZoneInfo
         india_tz = ZoneInfo("Asia/Kolkata")
         scheduled_at = st.session_state.get("last_uploaded_video_scheduled_at")
@@ -1090,7 +1116,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                         key="youtube_schedule_ampm",
                     )
             hour_24 = (schedule_hour_12 % 12) + (12 if schedule_ampm == "PM" else 0)
-            schedule_time = time(hour_24, schedule_minute)
+            schedule_time = dt_time(hour_24, schedule_minute)
             if st.button("🗓️ Approve చేసి Schedule చేయి", type="primary"):
                 try:
                     publish_datetime = datetime.combine(schedule_date, schedule_time, tzinfo=india_tz)
