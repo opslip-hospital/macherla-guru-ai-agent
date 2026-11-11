@@ -955,6 +955,11 @@ Caption language/script must match the video's spoken language. For Telugu, use 
 
     with st.form("youtube_private_upload_form"):
         upload_thumbnail = st.file_uploader("Thumbnail image (ఐచ్ఛికం)", type=["jpg", "jpeg", "png"])
+        upload_synthetic = st.checkbox(
+            "AI-generated / altered realistic content (YouTube disclosure)",
+            value=True,
+            help="YouTube requires disclosure when realistic people or events are AI-generated or altered.",
+        )
         upload_submit = st.form_submit_button("🔒 Review చేసిన వివరాలతో Privateగా Upload చేయి", type="primary")
 
     if upload_submit:
@@ -988,8 +993,14 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                                 "description": upload_description,
                                 "tags": tags,
                                 "categoryId": youtube_category_id(metadata.get("category", "Comedy")),
+                                "defaultLanguage": "te",
+                                "defaultAudioLanguage": "te",
                             },
-                            "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
+                            "status": {
+                                "privacyStatus": "private",
+                                "selfDeclaredMadeForKids": False,
+                                "containsSyntheticMedia": bool(upload_synthetic),
+                            },
                         },
                         media_body=media,
                     )
