@@ -3,6 +3,9 @@ import io
 import json
 import time
 import unicodedata
+import shutil
+import subprocess
+import tempfile
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -20,6 +23,48 @@ except Exception:
     GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
 BASE = "https://www.googleapis.com/youtube/v3"
+
+
+def make_gemini_video_proxy(video_bytes, original_name):
+    """Return a temporary 480p/8fps MP4 copy for Gemini, or None on any failure."""
+    if not shutil.which("ffmpeg"):
+        return None
+    temp_input = None
+    temp_output = None
+    try:
+        suffix = os.path.splitext(original_name or "")[1] or ".mp4"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as source:
+            source.write(video_bytes)
+            temp_input = source.name
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as target:
+            temp_output = target.name
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", temp_input,
+                "-vf", "scale=-2:480", "-r", "8",
+                "-c:v", "libx264", "-crf", "32", "-preset", "veryfast",
+                "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart",
+                temp_output,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120,
+            check=False,
+        )
+        if result.returncode != 0 or not os.path.isfile(temp_output) or os.path.getsize(temp_output) == 0:
+            return None
+        with open(temp_output, "rb") as proxy:
+            return proxy.read()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    finally:
+        for path in (temp_input, temp_output):
+            if path:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
 
 GEMINI_TEXT_MODELS = ("gemini-3.8-flash", "gemini-3.5-flash-lite")
 
@@ -662,14 +707,21 @@ else:
                 file_state = file_info["state"]
                 st.info("ఈ వీడియో Geminiకి ఇప్పటికే upload అయింది; saved fileని మళ్లీ ఉపయోగిస్తున్నాను.")
             else:
+                # Compress only the Gemini copy. The original upload remains untouched
+                # for the later YouTube upload, and the cache fingerprint stays original.
+                proxy_bytes = make_gemini_video_proxy(video_bytes, uploaded_video.name)
+                gemini_upload_bytes = proxy_bytes if proxy_bytes else video_bytes
+                gemini_upload_mime = "video/mp4" if proxy_bytes else mime_type
+                if proxy_bytes:
+                    st.info("వీడియోను Gemini కోసం తక్కువ పరిమాణంలో సిద్ధం చేస్తున్నాను…")
                 start = requests.post(
                     "https://generativelanguage.googleapis.com/upload/v1beta/files",
                     headers={
                         "x-goog-api-key": GEMINI_KEY,
                         "X-Goog-Upload-Protocol": "resumable",
                         "X-Goog-Upload-Command": "start",
-                        "X-Goog-Upload-Header-Content-Length": str(len(video_bytes)),
-                        "X-Goog-Upload-Header-Content-Type": mime_type,
+                        "X-Goog-Upload-Header-Content-Length": str(len(gemini_upload_bytes)),
+                        "X-Goog-Upload-Header-Content-Type": gemini_upload_mime,
                         "Content-Type": "application/json",
                     },
                     json={"file": {"display_name": uploaded_video.name}},
@@ -684,9 +736,9 @@ else:
                     headers={
                         "X-Goog-Upload-Offset": "0",
                         "X-Goog-Upload-Command": "upload, finalize",
-                        "Content-Length": str(len(video_bytes)),
+                        "Content-Length": str(len(gemini_upload_bytes)),
                     },
-                    data=video_bytes,
+                    data=gemini_upload_bytes,
                     timeout=300,
                 )
                 finish.raise_for_status()
@@ -711,10 +763,14 @@ else:
             if file_state in ("FAILED", "CANCELLED"):
                 st.session_state.pop("gemini_video_file_cache", None)
                 raise RuntimeError("Gemini video processing విఫలమైంది. మరోసారి Generate నొక్కి మళ్లీ ప్రయత్నించు.")
-            for _ in range(90):
+            processing_started = time.monotonic()
+            progress_status = st.empty()
+            for _ in range(180):
                 if file_state == "ACTIVE":
                     break
-                time.sleep(2)
+                elapsed = int(time.monotonic() - processing_started)
+                progress_status.info(f"Gemini వీడియోను ప్రాసెస్ చేస్తోంది… {elapsed}s")
+                time.sleep(1)
                 if not file_info.get("name"):
                     raise RuntimeError("Gemini saved video file statusను తనిఖీ చేయలేకపోయింది. మళ్లీ upload చేయి.")
                 check = requests.get(
@@ -726,6 +782,8 @@ else:
                 file_info = check.json()
                 file_state = file_info.get("state", "")
                 st.session_state["gemini_video_file_cache"]["state"] = file_state
+            if file_state == "ACTIVE":
+                progress_status.success(f"Gemini processing పూర్తయింది ({int(time.monotonic() - processing_started)}s).")
             if file_state != "ACTIVE":
                 raise RuntimeError("Gemini వీడియోను 3 నిమిషాల్లో ప్రాసెస్ చేయలేదు. కొద్దిసేపటి తర్వాత మళ్లీ ప్రయత్నించు.")
             file_uri = file_info.get("uri", file_uri)
@@ -747,12 +805,16 @@ SEO QUALITY RULES:
 Caption language/script must match the video's spoken language. For Telugu, use natural conversational Telugu, not awkward literal translations. Do not insert unrelated foreign-script characters. Never invent dialogue, punchlines, characters, events, results or promises. Never imply guaranteed views or virality. Return no Markdown fences or commentary."""
             # Retry temporary Gemini capacity/service errors; keep the manual button
             # as the only trigger so video selection never starts a surprise API call.
+            generation_started = time.monotonic()
+            generation_status = st.empty()
+            generation_status.info("SEO title, tags, captions తయారు చేస్తోంది… 0s")
             gen, used_text_model = gemini_generate_content(
                 contents=[{"parts": [
-                    {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+                    {"file_data": {"mime_type": "video/mp4" if not cache_valid and proxy_bytes else mime_type, "file_uri": file_uri}},
                     {"text": ai_prompt},
                 ]}],
                 generation_config={
+                    "mediaResolution": "MEDIA_RESOLUTION_LOW",
                     "temperature": 0.45,
                     "responseMimeType": "application/json",
                     "responseJsonSchema": {
@@ -776,6 +838,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 timeout=240,
                 retries_per_model=2,
             )
+            generation_status.success(f"SEO metadata తయారీ పూర్తయింది ({int(time.monotonic() - generation_started)}s).")
             if gen is None:
                 raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
             if used_text_model != GEMINI_TEXT_MODELS[0]:
