@@ -705,15 +705,23 @@ else:
                 }
                 file_uri = file_info["uri"]
                 file_state = file_info["state"]
+                file_mime_type = cached_file.get("mime_type", mime_type)
                 st.info("ఈ వీడియో Geminiకి ఇప్పటికే upload అయింది; saved fileని మళ్లీ ఉపయోగిస్తున్నాను.")
             else:
                 # Compress only the Gemini copy. The original upload remains untouched
                 # for the later YouTube upload, and the cache fingerprint stays original.
+                compression_started = time.monotonic()
+                st.info("వీడియోను Gemini కోసం 480pలో compress చేస్తున్నాను…")
                 proxy_bytes = make_gemini_video_proxy(video_bytes, uploaded_video.name)
+                compression_elapsed = int(time.monotonic() - compression_started)
                 gemini_upload_bytes = proxy_bytes if proxy_bytes else video_bytes
                 gemini_upload_mime = "video/mp4" if proxy_bytes else mime_type
                 if proxy_bytes:
-                    st.info("వీడియోను Gemini కోసం తక్కువ పరిమాణంలో సిద్ధం చేస్తున్నాను…")
+                    st.success(f"Gemini proxy సిద్ధమైంది ({compression_elapsed}s).")
+                else:
+                    st.info(f"Proxy అందుబాటులో లేదు; అసలు వీడియోనే పంపుతున్నాను ({compression_elapsed}s).")
+                upload_started = time.monotonic()
+                st.info("Geminiకి వీడియో upload చేస్తున్నాను…")
                 start = requests.post(
                     "https://generativelanguage.googleapis.com/upload/v1beta/files",
                     headers={
@@ -742,6 +750,8 @@ else:
                     timeout=300,
                 )
                 finish.raise_for_status()
+                st.success(f"Gemini upload పూర్తయింది ({int(time.monotonic() - upload_started)}s).")
+                file_mime_type = gemini_upload_mime
                 finish_data = finish.json()
                 if isinstance(finish_data, dict):
                     file_info = finish_data.get("file", finish_data)
@@ -758,6 +768,7 @@ else:
                     "uri": file_uri,
                     "name": file_info.get("name", ""),
                     "state": file_state,
+                    "mime_type": file_mime_type,
                     "created_at": time.time(),
                 }
             if file_state in ("FAILED", "CANCELLED"):
@@ -810,7 +821,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
             generation_status.info("SEO title, tags, captions తయారు చేస్తోంది… 0s")
             gen, used_text_model = gemini_generate_content(
                 contents=[{"parts": [
-                    {"file_data": {"mime_type": "video/mp4" if not cache_valid and proxy_bytes else mime_type, "file_uri": file_uri}},
+                    {"file_data": {"mime_type": file_mime_type, "file_uri": file_uri}},
                     {"text": ai_prompt},
                 ]}],
                 generation_config={
