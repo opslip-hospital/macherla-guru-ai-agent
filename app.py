@@ -69,12 +69,13 @@ def make_gemini_video_proxy(video_bytes, original_name):
 GEMINI_TEXT_MODELS = ("gemini-3.8-flash", "gemini-3.5-flash-lite")
 
 
-def gemini_generate_content(contents, generation_config, timeout=(15, 180), retries_per_model=2):
+def gemini_generate_content(contents, generation_config, timeout=(15, 180), retries_per_model=2, models=None):
     """Retry transient Gemini failures, then try the next configured text model."""
     last_response = None
     last_exception = None
+    model_sequence = tuple(models or GEMINI_TEXT_MODELS)
     transient_statuses = (408, 429, 500, 502, 503, 504)
-    for model in GEMINI_TEXT_MODELS:
+    for model in model_sequence:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         for attempt in range(retries_per_model + 1):
             try:
@@ -125,10 +126,10 @@ def gemini_generate_content(contents, generation_config, timeout=(15, 180), retr
             return response, model
 
     if last_response is not None:
-        return last_response, GEMINI_TEXT_MODELS[-1]
+        return last_response, model_sequence[-1]
     if last_exception is not None:
         raise last_exception
-    return None, GEMINI_TEXT_MODELS[-1]
+    return None, model_sequence[-1]
 
 # Metadata validation helpers: keep YouTube limits and brand hashtags consistent.
 def _is_metadata_tag_character(ch):
@@ -811,7 +812,6 @@ SEO QUALITY RULES:
 - Tags: provide 12-18 distinct search phrases, mixing English, Telugu script and natural Telugu transliteration where useful. Include exact tool/product names only when clearly present. Avoid near-duplicates and unrelated broad tags.
 - Hashtags: exactly 5 unique, relevant hashtags. Always include #MacherlaGuru as the channel brand. Choose the remaining four based on this video's actual subject. Use #AIMowa only when the video is specifically about AI Mowa; do not use it as the channel brand. Use #TeluguComedy and/or #AIComedy only for comedy/entertainment videos; for AI/technology tutorials use relevant tags such as #TeluguTech, #AITools or #VideoEditing instead. Never force a comedy hashtag onto a technology tutorial.
 - Instagram and YouTube captions must have different opening hooks, sound natural and conversational, and accurately describe the actual clip. Each must contain exactly the same 5 selected hashtags.
-- thumbnail_prompt: cinematic and specific to the actual video, matching its aspect ratio; only actual characters/props; no text or watermark.
 - category: most suitable YouTube category label. keywords: useful search phrases in Telugu, English and transliteration.
 Caption language/script must match the video's spoken language. For Telugu, use natural conversational Telugu, not awkward literal translations. Do not insert unrelated foreign-script characters. Never invent dialogue, punchlines, characters, events, results or promises. Never imply guaranteed views or virality. Return no Markdown fences or commentary."""
             # Retry temporary Gemini capacity/service errors; keep the manual button
@@ -826,7 +826,9 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 ]}],
                 generation_config={
                     "mediaResolution": "MEDIA_RESOLUTION_LOW",
+                    "thinkingConfig": {"thinkingLevel": "MINIMAL"},
                     "temperature": 0.45,
+                    "maxOutputTokens": 3000,
                     "responseMimeType": "application/json",
                     "responseJsonSchema": {
                         "type": "object",
@@ -836,18 +838,18 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                             "description": {"type": "string"},
                             "tags": {"type": "array", "items": {"type": "string"}},
                             "hashtags": {"type": "array", "items": {"type": "string"}},
-                            "thumbnail_prompt": {"type": "string"},
                             "instagram_caption": {"type": "string"},
                             "youtube_caption": {"type": "string"},
                             "category": {"type": "string"},
                             "keywords": {"type": "array", "items": {"type": "string"}}
                         },
-                        "required": ["title", "title_options", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"],
+                        "required": ["title", "title_options", "description", "tags", "hashtags", "instagram_caption", "youtube_caption", "category", "keywords"],
                         "additionalProperties": False
                     }
                 },
-                timeout=240,
-                retries_per_model=2,
+                timeout=(10, 35),
+                retries_per_model=0,
+                models=("gemini-3.5-flash-lite", "gemini-3.8-flash"),
             )
             generation_status.success(f"SEO metadata తయారీ పూర్తయింది ({int(time.monotonic() - generation_started)}s).")
             if gen is None:
@@ -919,75 +921,12 @@ Caption language/script must match the video's spoken language. For Telugu, use 
             st.session_state["ai_instagram_caption"] = metadata["instagram_caption"]
             st.session_state["ai_youtube_caption"] = metadata["youtube_caption"]
 
-            # If the owner has not supplied a thumbnail, ask Gemini image
-            # generation to create one using the actual uploaded video as context.
+            # Thumbnail image generation is intentionally skipped in this metadata flow.
+            # This button prepares SEO text only; no image-generation API call is made.
             st.session_state["ai_generated_thumbnail_bytes"] = None
             st.session_state["ai_generated_thumbnail_mime"] = "image/png"
             st.session_state["ai_thumbnail_source"] = "none"
-            try:
-                thumb_prompt = (
-                    "Create one polished YouTube thumbnail image for this exact video. "
-                    "Use the supplied video as the only source of truth. "
-                    + str(metadata.get("thumbnail_prompt", "")).strip()
-                    + " Make the main subject large, expressive and instantly readable on a phone. "
-                    "Use a cinematic composition, high contrast and crisp details. "
-                    "Do not add text, letters, captions, logos or watermarks. "
-                    "Return an image, not a written prompt."
-                )
-                thumb_response = None
-                thumb_data = {}
-                # Retry transient image-model rate limits with exponential backoff.
-                for thumb_attempt in range(3):
-                    thumb_response = requests.post(
-                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent",
-                        headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                        json={
-                            "contents": [{"parts": [
-                                {"text": thumb_prompt},
-                            ]}],
-                            "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
-                        },
-                        timeout=240,
-                    )
-                    if thumb_response.status_code not in (429, 500, 502, 503, 504) or thumb_attempt == 2:
-                        break
-                    time.sleep(2 ** (thumb_attempt + 1))
-                if not thumb_response.ok:
-                    try:
-                        thumb_error = thumb_response.json().get("error", {}).get("message", thumb_response.text)
-                    except Exception:
-                        thumb_error = thumb_response.text
-                    raise RuntimeError(f"Gemini Image API ({thumb_response.status_code}): {thumb_error}")
-                thumb_data = thumb_response.json()
-                generated_image = None
-                for thumb_candidate in thumb_data.get("candidates", []):
-                    for thumb_part in thumb_candidate.get("content", {}).get("parts", []):
-                        inline_data = thumb_part.get("inlineData") or thumb_part.get("inline_data")
-                        if isinstance(inline_data, dict) and inline_data.get("data"):
-                            import base64
-                            generated_image = base64.b64decode(inline_data["data"])
-                            st.session_state["ai_generated_thumbnail_mime"] = inline_data.get("mimeType", inline_data.get("mime_type", "image/png"))
-                            break
-                    if generated_image:
-                        break
-                if generated_image:
-                    st.session_state["ai_generated_thumbnail_bytes"] = generated_image
-                    st.session_state["ai_thumbnail_source"] = "gemini_generated"
-                else:
-                    st.warning("Gemini వివరాలు తయారు చేసింది, కానీ ఆటో Thumbnail image రాలేదు. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
-            except Exception as thumb_exc:
-                try:
-                    frame_thumbnail = extract_video_frame_thumbnail(uploaded_video)
-                    if frame_thumbnail:
-                        st.session_state["ai_generated_thumbnail_bytes"] = frame_thumbnail
-                        st.session_state["ai_generated_thumbnail_mime"] = "image/jpeg"
-                        st.session_state["ai_thumbnail_source"] = "video_frame_fallback"
-                        st.warning("Gemini Image API Free Tierలో అందుబాటులో లేదు. వీడియోలోని ఒక frameతో ఉచిత fallback thumbnail సిద్ధం చేశాను; కావాలంటే నీ JPG/PNGతో మార్చుకోవచ్చు.")
-                    else:
-                        st.warning(f"Gemini వివరాలు సిద్ధం అయ్యాయి. ఆటో Thumbnail తయారీలో సమస్య: {thumb_exc}. నువ్వు JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
-                except Exception as frame_exc:
-                    st.warning(f"Gemini Thumbnail అందుబాటులో లేదు ({thumb_exc}); వీడియో-frame fallback కూడా సాధ్యం కాలేదు ({frame_exc}). JPG/PNG ఎంచుకుని పెట్టవచ్చు.")
-            st.success("వీడియో చూసి Title, SEO, Tags సిద్ధం అయ్యాయి. నీ JPG/PNG ఇస్తే అదే thumbnailగా వాడతాం; లేకపోతే అందుబాటులో ఉన్న thumbnailను ఉపయోగిస్తాం. Upload ముందు Review చేయి.")
+            st.success("వీడియో చూసి Title, SEO, Tags, Hashtags, Captions సిద్ధం అయ్యాయి. Upload ముందు Review చేయి.")
         except Exception as exc:
             st.error(f"AI వీడియో విశ్లేషణలో సమస్య: {exc}")
     elif uploaded_video and not GEMINI_KEY:
