@@ -897,7 +897,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     "Gemini సమాధానం JSON object రూపంలో రాలేదు. Generate మళ్లీ నొక్కి ప్రయత్నించు. "
                     "వివరాలు ఇంకా రాకపోతే Gemini API response format తనిఖీ చేయాలి."
                 )
-            for field in ["title", "title_options", "description", "tags", "hashtags", "thumbnail_prompt", "instagram_caption", "youtube_caption", "category", "keywords"]:
+            for field in ["title", "title_options", "description", "tags", "hashtags", "instagram_caption", "youtube_caption", "category", "keywords"]:
                 metadata.setdefault(field, [] if field in ["title_options", "tags", "hashtags", "keywords"] else "")
             if not isinstance(metadata.get("tags"), list):
                 metadata["tags"] = [str(metadata["tags"])]
