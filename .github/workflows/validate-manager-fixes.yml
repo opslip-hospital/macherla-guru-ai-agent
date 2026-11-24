@@ -6,6 +6,7 @@ on:
       - "claude-issues-fixes-*"
       - "fix/remove-gemini-thinking-config-*"
       - "fix/gemini-primary-backup-retry"
+      - "fix/gemini-primary-retry-backup-again"
       - main
   pull_request:
 
