@@ -59,7 +59,7 @@ class GeminiRequestTests(unittest.TestCase):
     def setUp(self):
         self.ns, self.FakeRequests, self.Response, self.clock = load_gemini_helpers()
         self.contents = [{"parts": [{"text": "hello"}]}]
-        self.config = {"temperature": 0.2, "thinkingConfig": {"thinkingLevel": "MINIMAL"}}
+        self.config = {"temperature": 0.2}
 
     def test_restores_nov_21_model_order(self):
         self.assertEqual(
@@ -95,9 +95,10 @@ class GeminiRequestTests(unittest.TestCase):
         self.assertIn("/models/gemini-3.5-flash-lite:", fake.calls[2][0])
         self.assertEqual(self.clock.sleep.call_args_list[0].args, (2,))
 
-    def test_seo_call_restores_explicit_order_and_thinking_config(self):
+    def test_seo_call_uses_compatible_config_for_both_models(self):
         source = APP_PATH.read_text(encoding="utf-8")
-        self.assertIn('"thinkingConfig": {"thinkingLevel": "MINIMAL"}', source)
+        self.assertNotIn("thinkingConfig", source)
+        self.assertNotIn("thinkingLevel", source)
         self.assertIn('models=("gemini-3.5-flash-lite", "gemini-3.8-flash")', source)
         self.assertIn("retries_per_model=0", source)
         self.assertNotIn("_strip_gemini_thinking_settings", source)
