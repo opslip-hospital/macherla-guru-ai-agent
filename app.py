@@ -828,7 +828,6 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 ]}],
                 generation_config={
                     "mediaResolution": "MEDIA_RESOLUTION_LOW",
-                    "thinkingConfig": {"thinkingLevel": "MINIMAL"},
                     "temperature": 0.45,
                     "maxOutputTokens": 3000,
                     "responseMimeType": "application/json",
