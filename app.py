@@ -66,70 +66,47 @@ def make_gemini_video_proxy(video_bytes, original_name):
                     pass
 
 
-GEMINI_TEXT_MODELS = ("gemini-3.8-flash", "gemini-3.5-flash-lite")
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 
+def _gemini_retry_seconds(response, default=30):
+    """Read Gemini retry hints, capped at 30 seconds."""
+    messages = []
+    try:
+        messages.append(str(response.json().get("error", {}).get("message", "")))
+    except Exception:
+        pass
+    messages.append(str(getattr(response, "text", "")))
+    for message in messages:
+        match = re.search(r"retry\s+in\s+(\d+(?:\.\d+)?)\s*s(?:ec(?:ond)?s?)?", message, re.IGNORECASE)
+        if match:
+            return min(30, max(1, int(float(match.group(1)))))
+    retry_after = getattr(response, "headers", {}).get("Retry-After", "")
+    try:
+        if retry_after:
+            return min(30, max(1, int(float(retry_after))))
+    except (TypeError, ValueError):
+        pass
+    return default
 
-def gemini_generate_content(contents, generation_config, timeout=(15, 180), retries_per_model=2, models=None):
-    """Retry transient Gemini failures, then try the next configured text model."""
-    last_response = None
-    last_exception = None
-    model_sequence = tuple(models or GEMINI_TEXT_MODELS)
-    transient_statuses = (408, 429, 500, 502, 503, 504)
-    for model in model_sequence:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        for attempt in range(retries_per_model + 1):
-            try:
-                response = requests.post(
-                    url,
-                    headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                    json={"contents": contents, "generationConfig": generation_config},
-                    timeout=timeout,
-                )
-            except requests.RequestException as exc:
-                last_exception = exc
-                if attempt < retries_per_model:
-                    time.sleep(2 ** (attempt + 1))
-                    continue
-                # A network failure on this model must not prevent trying fallback.
-                break
-
-            last_response = response
-            if response.ok:
-                return response, model
-
-            try:
-                error_text = response.json().get("error", {}).get("message", response.text).casefold()
-            except Exception:
-                error_text = response.text.casefold()
-
-            model_unavailable = response.status_code == 404 or (
-                response.status_code == 400 and
-                ("model not found" in error_text or "not supported" in error_text)
-            )
-            if model_unavailable:
-                break
-
-            if response.status_code in transient_statuses:
-                if attempt < retries_per_model:
-                    retry_after = response.headers.get("Retry-After", "")
-                    try:
-                        delay = min(20, max(1, int(float(retry_after)))) if retry_after else 2 ** (attempt + 1)
-                    except (TypeError, ValueError):
-                        delay = 2 ** (attempt + 1)
-                    time.sleep(delay)
-                    continue
-                # Important: after the final retry, continue to the fallback model.
-                break
-
-            # Non-transient errors (for example invalid credentials or malformed
-            # requests) should be returned immediately rather than masked.
-            return response, model
-
-    if last_response is not None:
-        return last_response, model_sequence[-1]
-    if last_exception is not None:
-        raise last_exception
-    return None, model_sequence[-1]
+def gemini_generate_content(contents, generation_config, timeout=(15, 180)):
+    """Call only Flash-Lite; retry HTTP 429 once after its requested delay."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    payload = {"contents": contents, "generationConfig": generation_config}
+    response = requests.post(url, headers={
+        "x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"
+    }, json=payload, timeout=timeout)
+    if response.status_code != 429:
+        return response, 0
+    delay = _gemini_retry_seconds(response)
+    time.sleep(delay)
+    retry_response = requests.post(url, headers={
+        "x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"
+    }, json=payload, timeout=timeout)
+    if retry_response.status_code == 429:
+        delay = _gemini_retry_seconds(retry_response, default=delay)
+    else:
+        delay = 0
+    return retry_response, delay
 
 # Metadata validation helpers: keep YouTube limits and brand hashtags consistent.
 def _is_metadata_tag_character(ch):
@@ -819,14 +796,13 @@ Caption language/script must match the video's spoken language. For Telugu, use 
             generation_started = time.monotonic()
             generation_status = st.empty()
             generation_status.info("SEO title, tags, captions తయారు చేస్తోంది… 0s")
-            gen, used_text_model = gemini_generate_content(
+            gen, retry_after_seconds = gemini_generate_content(
                 contents=[{"parts": [
                     {"file_data": {"mime_type": file_mime_type, "file_uri": file_uri}},
                     {"text": ai_prompt},
                 ]}],
                 generation_config={
                     "mediaResolution": "MEDIA_RESOLUTION_LOW",
-                    "thinkingConfig": {"thinkingLevel": "MINIMAL"},
                     "temperature": 0.45,
                     "maxOutputTokens": 3000,
                     "responseMimeType": "application/json",
@@ -848,19 +824,17 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     }
                 },
                 timeout=(10, 35),
-                retries_per_model=0,
-                models=("gemini-3.5-flash-lite", "gemini-3.8-flash"),
             )
             generation_status.success(f"SEO metadata తయారీ పూర్తయింది ({int(time.monotonic() - generation_started)}s).")
             if gen is None:
                 raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
-            if used_text_model != GEMINI_TEXT_MODELS[0]:
-                st.info(f"Primary Gemini model అందుబాటులో లేదు; fallback {used_text_model} ఉపయోగించబడింది.")
             if not gen.ok:
                 try:
                     gemini_error = gen.json().get("error", {}).get("message", gen.text)
                 except Exception:
                     gemini_error = gen.text
+                if gen.status_code == 429:
+                    raise RuntimeError(f"Gemini limit ayipoyindhi, {retry_after_seconds or 30} sec taruvata malli nokku")
                 raise RuntimeError(f"Gemini API ({gen.status_code}): {gemini_error}")
             gen_data = gen.json()
             if not isinstance(gen_data, dict):
@@ -1551,20 +1525,20 @@ Caption language/script must match the video's spoken language. For Telugu, use 
 నిర్దిష్టమైన actionable advice ఇవ్వు; views guarantee చేయవద్దు.
 """
                         with st.spinner("Gemini నిజమైన analytics ఆధారంగా Telugu diagnosis తయారు చేస్తోంది..."):
-                            growth_response, growth_model = gemini_generate_content(
+                            growth_response, growth_retry_seconds = gemini_generate_content(
                                 contents=[{"parts": [{"text": growth_prompt}]}],
                                 generation_config={"temperature": 0.35, "maxOutputTokens": 3000},
                                 timeout=(15, 180),
-                                retries_per_model=2,
                             )
-                            if growth_model != GEMINI_TEXT_MODELS[0]:
-                                st.info(f"Analytics diagnosis కోసం fallback Gemini model {growth_model} ఉపయోగించబడింది.")
                             if not growth_response.ok:
                                 try:
                                     growth_error = growth_response.json().get("error", {}).get("message", growth_response.text)
                                 except Exception:
                                     growth_error = growth_response.text
-                                st.error(f"Gemini API error ({growth_response.status_code}): {growth_error}")
+                                if growth_response.status_code == 429:
+                                    st.error(f"Gemini limit ayipoyindhi, {growth_retry_seconds or 30} sec taruvata malli nokku")
+                                else:
+                                    st.error(f"Gemini API error ({growth_response.status_code}): {growth_error}")
                             else:
                                 growth_result = growth_response.json()
                                 growth_text = "\n".join(
@@ -1698,20 +1672,20 @@ Return only the selected format with clean headings.
                         "contents": [{"parts": [{"text": prompt}]}],
                         "generationConfig": {"temperature": 0.85, "maxOutputTokens": 8192}
                     }
-                    response, studio_model = gemini_generate_content(
+                    response, studio_retry_seconds = gemini_generate_content(
                         contents=request_body["contents"],
                         generation_config=request_body["generationConfig"],
                         timeout=(15, 180),
-                        retries_per_model=2,
                     )
-                    if studio_model != GEMINI_TEXT_MODELS[0]:
-                        st.info(f"Content Studio కోసం fallback Gemini model {studio_model} ఉపయోగించబడింది.")
                     if not response.ok:
                         try:
                             detail = response.json().get("error", {}).get("message", response.text)
                         except Exception:
                             detail = response.text
-                        st.error(f"Gemini API error ({response.status_code}): {detail}")
+                        if response.status_code == 429:
+                            st.error(f"Gemini limit ayipoyindhi, {studio_retry_seconds or 30} sec taruvata malli nokku")
+                        else:
+                            st.error(f"Gemini API error ({response.status_code}): {detail}")
                     else:
                         payload = response.json()
                         candidates = payload.get("candidates", [])
