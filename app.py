@@ -67,109 +67,71 @@ def make_gemini_video_proxy(video_bytes, original_name):
                     pass
 
 
-GEMINI_PRIMARY_MODEL = "gemini-3.5-flash-lite"
-GEMINI_BACKUP_MODEL = "gemini-3.8-flash"
-GEMINI_TEXT_MODELS = [GEMINI_PRIMARY_MODEL, GEMINI_BACKUP_MODEL]
+GEMINI_TEXT_MODELS = ("gemini-3.8-flash", "gemini-3.5-flash-lite")
 
 
-def _strip_gemini_thinking_settings(value):
-    if isinstance(value, dict):
-        blocked = {"thinkingconfig", "thinkinglevel", "thinking_config", "thinking_level"}
-        return {key: _strip_gemini_thinking_settings(item) for key, item in value.items()
-                if str(key).casefold() not in blocked}
-    if isinstance(value, list):
-        return [_strip_gemini_thinking_settings(item) for item in value]
-    return value
-
-
-def gemini_generate_content(contents, generation_config, timeout=(15, 180), status_callback=None, **_ignored):
-    payload = _strip_gemini_thinking_settings({"contents": contents, "generationConfig": generation_config or {}})
-    headers = {"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}
-    retryable = {500, 502, 503, 504}
-    primary_delays, backup_delays = (3, 6, 12, 20), (3, 6)
+def gemini_generate_content(contents, generation_config, timeout=(15, 180), retries_per_model=2, models=None):
+    """Retry transient Gemini failures, then try the next configured text model."""
     last_response = None
-
-    def notify(message):
-        if status_callback:
-            status_callback(message)
-
-    def request(model):
+    last_exception = None
+    model_sequence = tuple(models or GEMINI_TEXT_MODELS)
+    transient_statuses = (408, 429, 500, 502, 503, 504)
+    for model in model_sequence:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        return requests.post(url, headers=headers, json=payload, timeout=timeout)
-
-    def retry_after_seconds(response):
-        try:
-            message = response.json().get("error", {}).get("message", response.text)
-        except Exception:
-            message = response.text
-        match = re.search(r"retry\s+in\s+(\d+(?:\.\d+)?)\s*s", str(message), re.IGNORECASE)
-        return min(30, max(0, int(float(match.group(1)) + 0.999))) if match else 1
-
-    def run_model(model, delays):
-        nonlocal last_response
-        for attempt in range(len(delays) + 1):
+        for attempt in range(retries_per_model + 1):
             try:
-                response = request(model)
-            except requests.RequestException:
-                if attempt < len(delays):
-                    delay = delays[attempt]
-                    notify(f"Gemini busy (network), {delay} sec lo malli try chesthunna... ({attempt + 1}/{len(delays)})")
-                    time.sleep(delay)
+                response = requests.post(
+                    url,
+                    headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
+                    json={"contents": contents, "generationConfig": generation_config},
+                    timeout=timeout,
+                )
+            except requests.RequestException as exc:
+                last_exception = exc
+                if attempt < retries_per_model:
+                    time.sleep(2 ** (attempt + 1))
                     continue
-                return None, "network"
+                # A network failure on this model must not prevent trying fallback.
+                break
+
             last_response = response
             if response.ok:
-                return response, "success"
-            if response.status_code in (400, 401, 403):
-                return response, "fatal"
-            if response.status_code == 429:
-                if attempt == 0:
-                    delay = retry_after_seconds(response)
-                    notify(f"Gemini limit (429), {delay} sec wait chesi okkasari retry chesthunna...")
-                    time.sleep(delay)
-                    try:
-                        retry_response = request(model)
-                    except requests.RequestException:
-                        return None, "rate_limit"
-                    last_response = retry_response
-                    return (retry_response, "success") if retry_response.ok else (retry_response, "rate_limit")
-                return response, "rate_limit"
-            if response.status_code not in retryable:
-                return response, "other"
-            if attempt < len(delays):
-                delay = delays[attempt]
-                notify(f"Gemini busy ({response.status_code}), {delay} sec lo malli try chesthunna... ({attempt + 1}/{len(delays)})")
-                time.sleep(delay)
-        return last_response, "exhausted"
+                return response, model
 
-    response, outcome = run_model(GEMINI_PRIMARY_MODEL, primary_delays)
-    if outcome == "success":
-        return response, GEMINI_PRIMARY_MODEL
-    if outcome in ("fatal", "rate_limit", "other"):
-        return response, GEMINI_PRIMARY_MODEL
-
-    notify("Backup model tho try chesthunna...")
-    backup_response, backup_outcome = run_model(GEMINI_BACKUP_MODEL, backup_delays)
-    if backup_outcome == "success":
-        return backup_response, GEMINI_BACKUP_MODEL
-    if backup_response is not None:
-        if backup_outcome == "exhausted":
             try:
-                backup_response._gemini_server_busy = True
+                error_text = response.json().get("error", {}).get("message", response.text).casefold()
             except Exception:
-                pass
-        return backup_response, GEMINI_BACKUP_MODEL
-    raise RuntimeError("Google server busy undi. 1–2 nimishalu aagi malli button nokku. Video malli upload avvadu.")
+                error_text = response.text.casefold()
 
+            model_unavailable = response.status_code == 404 or (
+                response.status_code == 400 and
+                ("model not found" in error_text or "not supported" in error_text)
+            )
+            if model_unavailable:
+                break
 
-def gemini_failure_message(response, model):
-    if getattr(response, "_gemini_server_busy", False):
-        return "Google server busy undi. 1–2 nimishalu aagi malli button nokku. Video malli upload avvadu."
-    try:
-        detail = response.json().get("error", {}).get("message", response.text)
-    except Exception:
-        detail = response.text
-    return f"Gemini API ({response.status_code}, {model}): {detail}"
+            if response.status_code in transient_statuses:
+                if attempt < retries_per_model:
+                    retry_after = response.headers.get("Retry-After", "")
+                    try:
+                        delay = min(20, max(1, int(float(retry_after)))) if retry_after else 2 ** (attempt + 1)
+                    except (TypeError, ValueError):
+                        delay = 2 ** (attempt + 1)
+                    time.sleep(delay)
+                    continue
+                # Important: after the final retry, continue to the fallback model.
+                break
+
+            # Non-transient errors (for example invalid credentials or malformed
+            # requests) should be returned immediately rather than masked.
+            return response, model
+
+    if last_response is not None:
+        return last_response, model_sequence[-1]
+    if last_exception is not None:
+        raise last_exception
+    return None, model_sequence[-1]
+
 
 # Metadata validation helpers: keep YouTube limits and brand hashtags consistent.
 def _is_metadata_tag_character(ch):
@@ -866,6 +828,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 ]}],
                 generation_config={
                     "mediaResolution": "MEDIA_RESOLUTION_LOW",
+                    "thinkingConfig": {"thinkingLevel": "MINIMAL"},
                     "temperature": 0.45,
                     "maxOutputTokens": 3000,
                     "responseMimeType": "application/json",
@@ -887,7 +850,8 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     }
                 },
                 timeout=(10, 35),
-                status_callback=lambda message: generation_status.warning(message),
+                retries_per_model=0,
+                models=("gemini-3.5-flash-lite", "gemini-3.8-flash"),
             )
             if gen is None:
                 raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
