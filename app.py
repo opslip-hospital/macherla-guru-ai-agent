@@ -497,7 +497,8 @@ def persist_owner_credentials(creds):
     if not config:
         return False
     supabase_url, secret_key = config
-    encrypted = token_cipher().encrypt(creds.to_json().encode("utf-8")).decode("utf-8")    response = requests.post(
+    encrypted = token_cipher().encrypt(creds.to_json().encode("utf-8")).decode("utf-8")
+    response = requests.post(
         f"{supabase_url}/rest/v1/youtube_oauth_tokens",
         params={"on_conflict": "singleton"},
         headers={**supabase_headers(secret_key), "Prefer": "resolution=merge-duplicates,return=minimal"},
@@ -536,7 +537,8 @@ def get_owner_credentials():
             if raw:
                 st.session_state["youtube_owner_token"] = raw
         except Exception as exc:
-            st.warning(f"Saved YouTube session could not be loaded: {exc}")            return None
+            st.warning(f"Saved YouTube session could not be loaded: {exc}")
+            return None
     if not raw:
         return None
     creds = Credentials.from_authorized_user_info(json.loads(raw), YT_SCOPES)
@@ -894,9 +896,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     gemini_error = gen.json().get("error", {}).get("message", gen.text)
                 except Exception:
                     gemini_error = gen.text
-                raise RuntimeError(gemini_failure_message(gen, used_text_model))
-            generation_status.success(f"SEO metadata తయారీ పూర్తయింది ({int(time.monotonic() - generation_started)}s).")
-            st.caption(f"Model: {used_text_model}")
+                raise RuntimeError(f"Gemini API ({gen.status_code}, {used_text_model}): {gemini_error}")
             gen_data = gen.json()
             if not isinstance(gen_data, dict):
                 raise RuntimeError("Gemini response format తప్పుగా వచ్చింది. మళ్లీ Generate చేయి.")
@@ -996,7 +996,8 @@ Caption language/script must match the video's spoken language. For Telugu, use 
             if thumbnail_source == "video_frame_fallback":
                 st.write("**వీడియోలోని frameతో చేసిన ఉచిత Thumbnail Preview:**")
             elif thumbnail_source == "gemini_generated":
-                st.write("**Gemini AI తయారు చేసిన Thumbnail Preview:**")            else:
+                st.write("**Gemini AI తయారు చేసిన Thumbnail Preview:**")
+            else:
                 st.write("**Thumbnail Preview:**")
             st.image(generated_thumb, use_container_width=True)
 
@@ -1035,7 +1036,8 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     request = youtube_owner.videos().insert(
                         part="snippet,status",
                         body={
-                            "snippet": {                                "title": upload_title.strip(),
+                            "snippet": {
+                                "title": upload_title.strip(),
                                 "description": upload_description,
                                 "tags": tags,
                                 "categoryId": youtube_category_id(metadata.get("category", "Comedy")),
@@ -1495,6 +1497,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                         k5.metric("Avg viewed (%)", f"{recent_avp:.1f}%", f"{change_pct(recent_avp, previous_avp):+.1f}%" if change_pct(recent_avp, previous_avp) is not None else "No previous data")
                     else:
                         st.caption("ఇది views-only diagnostic. మిగతా metrics కోసం detailed Analytics report అందుబాటులోకి రావాలి.")
+
                     # Top-video report adds context, but includes all content types.
                     video_data = []
                     try:
@@ -1533,7 +1536,8 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     # if YouTube does not support this report for the channel.
                     traffic_data = []
                     try:
-                        traffic_report = growth_query(                            recent_start, completed_end,
+                        traffic_report = growth_query(
+                            recent_start, completed_end,
                             dimensions="insightTrafficSourceType,creatorContentType",
                             metrics="views,engagedViews",
                         )
