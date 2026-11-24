@@ -46,3 +46,9 @@ redirect_uri = "https://YOUR-APP-NAME.streamlit.app"
 ```
 
 Never commit OAuth client secrets or access/refresh tokens to GitHub. The owner must connect the Google account that manages the Macherla Guru channel. Authorization is held in the active Streamlit session; reconnect may be required after the session resets. Analytics are subject to YouTube's reporting delay and API availability.
+
+## Gemini model and quota behavior
+- All Gemini text-generation features use the single model `gemini-3.5-flash-lite` through the shared helper in `app.py`.
+- No fallback model list or thinking configuration is used.
+- On HTTP 429, the app waits once using Gemini's `retry in Ns` hint (capped at 30 seconds) and retries the same model once. If it is still rate-limited, the UI asks you in Telugu to try again after the displayed delay.
+- The video metadata flow reuses the saved Gemini file URI for the same video while the cache entry is valid, rather than uploading the video again.
