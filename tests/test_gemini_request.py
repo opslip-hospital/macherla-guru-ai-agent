@@ -116,12 +116,17 @@ class GeminiRetryTests(unittest.TestCase):
         fake = self.FakeRequests([
             self.Response(503), self.Response(503), self.Response(503),
             self.Response(503), self.Response(503), self.Response(503),
+            self.Response(503), self.Response(503),
         ])
         self.ns["requests"] = fake
         response, model = self.ns["gemini_generate_content"](self.contents, self.config)
         self.assertEqual(response.status_code, 503)
         self.assertEqual(model, "gemini-3.8-flash")
-        self.assertEqual(len(fake.calls), 8) if False else None
+        self.assertEqual(len(fake.calls), 8)
+        self.assertEqual(
+            [call.args[0] for call in self.clock.sleep.call_args_list],
+            [3, 6, 12, 20, 3, 6],
+        )
 
     def test_429_waits_once_and_never_switches_to_backup(self):
         fake = self.FakeRequests([
