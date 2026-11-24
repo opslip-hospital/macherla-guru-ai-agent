@@ -72,7 +72,7 @@ GEMINI_TEXT_MODELS = ["gemini-3.5-flash-lite"]
 def _strip_gemini_thinking_settings(value):
     """Remove unsupported thinking controls from any nested Gemini request config."""
     if isinstance(value, dict):
-        blocked = {"thinkingconfig", "thinkinglevel", "thinking_level"}
+        blocked = {"thinkingconfig", "thinkinglevel", "thinking_config", "thinking_level"}
         return {
             key: _strip_gemini_thinking_settings(item)
             for key, item in value.items()
