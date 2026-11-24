@@ -126,7 +126,7 @@ class GeminiRequestTests(unittest.TestCase):
         self.ns["requests"] = fake
         response, model = self.ns["gemini_generate_content"](self.contents, self.config)
         self.assertEqual(self.ns["gemini_failure_message"](response, model),
-            "Google server busy undi. 1–2 nimishాలు aagi malli button nokku. Video malli upload avvadu.")
+            "Google server busy undi. 1–2 nimishalu aagi malli button nokku. Video malli upload avvadu.")
 
 
 if __name__ == "__main__":
