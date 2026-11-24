@@ -78,7 +78,7 @@ class GeminiRequestTests(unittest.TestCase):
         self.assertTrue(response.ok)
         self.assertEqual(model, "gemini-3.8-flash")
         self.assertEqual(len(fake.calls), 6)
-        self.assertEqual([c.args[0] for c in self.clock.sleep.call_args_list], [3, 6, 12, 20, 3])
+        self.assertEqual([c.args[0] for c in self.clock.sleep.call_args_list], [3, 6, 12, 20])
         self.assertTrue(any("(1/4)" in msg for msg in messages))
         self.assertIn("Backup model tho try chesthunna...", messages)
 
@@ -90,7 +90,7 @@ class GeminiRequestTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertTrue(response._gemini_server_busy)
         self.assertEqual(len(fake.calls), 8)
-        self.assertEqual([c.args[0] for c in self.clock.sleep.call_args_list], [3, 6, 12, 20, 3, 6, 3])
+        self.assertEqual([c.args[0] for c in self.clock.sleep.call_args_list], [3, 6, 12, 20, 3, 6])
 
     def test_429_waits_from_error_once_and_never_switches_to_backup(self):
         fake = self.FakeRequests([self.Response(429, "Quota; retry in 45s"), self.Response(429, "still limited")])
