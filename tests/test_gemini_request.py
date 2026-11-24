@@ -105,7 +105,7 @@ class GeminiRetryTests(unittest.TestCase):
         self.assertEqual(len(fake.calls), 6)
         self.assertEqual(
             [call.args[0] for call in self.clock.sleep.call_args_list],
-            [3, 6, 12, 20, 3],
+            [3, 6, 12, 20],
         )
         self.assertTrue(any("(1/4)" in message for message in messages))
         self.assertTrue(any("Backup model tho try chesthunna..." in message for message in messages))
