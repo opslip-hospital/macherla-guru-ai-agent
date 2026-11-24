@@ -37,6 +37,9 @@ def load_helpers():
         class RequestException(Exception):
             pass
 
+        class Timeout(RequestException):
+            pass
+
         def __init__(self, responses):
             self.responses = list(responses)
             self.calls = []
@@ -127,6 +130,54 @@ class GeminiRetryTests(unittest.TestCase):
             [call.args[0] for call in self.clock.sleep.call_args_list],
             [3, 6, 12, 20, 3, 6],
         )
+
+    def test_video_read_timeout_retries_primary_then_succeeds(self):
+        fake = self.FakeRequests([
+            self.FakeRequests.Timeout("read timed out"),
+            self.Response(200),
+        ])
+        self.ns["requests"] = fake
+        messages = []
+        response, model = self.ns["gemini_generate_content"](
+            self.contents, self.config,
+            status_callback=messages.append,
+            retry_timeouts=True,
+        )
+        self.assertTrue(response.ok)
+        self.assertEqual(model, "gemini-3.5-flash-lite")
+        self.assertEqual(len(fake.calls), 2)
+        self.assertEqual(self.clock.sleep.call_args.args, (3,))
+        self.assertTrue(any("timeout" in message.lower() for message in messages))
+
+    def test_video_timeouts_exhaust_primary_then_backup_and_reuse_same_request(self):
+        fake = self.FakeRequests([
+            self.FakeRequests.Timeout("primary read timed out"),
+            self.FakeRequests.Timeout("primary read timed out"),
+            self.FakeRequests.Timeout("primary read timed out"),
+            self.FakeRequests.Timeout("primary read timed out"),
+            self.FakeRequests.Timeout("primary read timed out"),
+            self.FakeRequests.Timeout("backup read timed out"),
+            self.Response(200),
+        ])
+        self.ns["requests"] = fake
+        response, model = self.ns["gemini_generate_content"](
+            self.contents, self.config, retry_timeouts=True
+        )
+        self.assertTrue(response.ok)
+        self.assertEqual(model, "gemini-3.8-flash")
+        self.assertEqual(len(fake.calls), 7)
+        self.assertEqual(
+            [call.args[0] for call in self.clock.sleep.call_args_list],
+            [3, 6, 12, 20, 3],
+        )
+        self.assertEqual(fake.calls[0][1]["json"], fake.calls[-1][1]["json"])
+
+    def test_timeouts_are_not_retried_for_other_gemini_calls_by_default(self):
+        fake = self.FakeRequests([self.FakeRequests.Timeout("read timed out")])
+        self.ns["requests"] = fake
+        with self.assertRaises(self.FakeRequests.Timeout):
+            self.ns["gemini_generate_content"](self.contents, self.config)
+        self.assertEqual(len(fake.calls), 1)
 
     def test_429_waits_once_and_never_switches_to_backup(self):
         fake = self.FakeRequests([
