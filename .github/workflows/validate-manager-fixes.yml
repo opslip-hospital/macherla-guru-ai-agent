@@ -5,6 +5,7 @@ on:
     branches:
       - "claude-issues-fixes-*"
       - "fix/remove-gemini-thinking-config-*"
+      - "fix/gemini-primary-backup-retry"
       - main
   pull_request:
 
