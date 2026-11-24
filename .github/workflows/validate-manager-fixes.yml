@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "claude-issues-fixes-*"
+      - "fix/remove-gemini-thinking-config-*"
       - main
   pull_request:
 
@@ -20,6 +21,8 @@ jobs:
           python-version: "3.12"
       - name: Compile app.py
         run: python -m py_compile app.py
+      - name: Test Gemini request safety
+        run: python -m unittest discover -s tests -p "test_*.py" -v
       - name: Test metadata helper limits
         run: |
           python - <<'PY'
