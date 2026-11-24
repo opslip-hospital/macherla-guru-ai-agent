@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "claude-issues-fixes-*"
+      - "fix/gemini-*"
       - main
   pull_request:
 
@@ -27,11 +28,11 @@ jobs:
           import re
           source = Path("app.py").read_text(encoding="utf-8")
           assert 'GEMINI_MODEL = "gemini-3.5-flash-lite"' in source
-          assert not re.search(r"gemini-(?!3\\.5-flash-lite)[A-Za-z0-9.-]+", source)
+          assert not re.search(r"gemini-(?!3\.5-flash-lite)[A-Za-z0-9.-]+", source)
           assert "thinkingConfig" not in source and "thinkingLevel" not in source
           assert "def _gemini_retry_seconds(" in source
           assert "def gemini_generate_content(" in source
-          helper = source.split("def gemini_generate_content(", 1)[1].split("\\ndef ", 1)[0]
+          helper = source.split("def gemini_generate_content(", 1)[1].split("\ndef ", 1)[0]
           assert helper.count("requests.post(") == 2
           assert "time.sleep(delay)" in helper
           assert 'st.session_state["gemini_video_file_cache"]' in source
