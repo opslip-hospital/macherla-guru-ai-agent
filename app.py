@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import re
 import time
 import unicodedata
 import shutil
@@ -66,70 +67,109 @@ def make_gemini_video_proxy(video_bytes, original_name):
                     pass
 
 
-GEMINI_TEXT_MODELS = ["gemini-3.5-flash-lite"]
+GEMINI_PRIMARY_MODEL = "gemini-3.5-flash-lite"
+GEMINI_BACKUP_MODEL = "gemini-3.8-flash"
+GEMINI_TEXT_MODELS = [GEMINI_PRIMARY_MODEL, GEMINI_BACKUP_MODEL]
 
 
 def _strip_gemini_thinking_settings(value):
-    """Remove unsupported thinking controls from any nested Gemini request config."""
     if isinstance(value, dict):
         blocked = {"thinkingconfig", "thinkinglevel", "thinking_config", "thinking_level"}
-        return {
-            key: _strip_gemini_thinking_settings(item)
-            for key, item in value.items()
-            if str(key).casefold() not in blocked
-        }
+        return {key: _strip_gemini_thinking_settings(item) for key, item in value.items()
+                if str(key).casefold() not in blocked}
     if isinstance(value, list):
         return [_strip_gemini_thinking_settings(item) for item in value]
     return value
 
 
-def gemini_generate_content(contents, generation_config, timeout=(15, 180), retries_per_model=2, models=None):
-    """Use only the approved model; retry once without thinking controls on a thinking-related 400."""
-    model = GEMINI_TEXT_MODELS[0]  # Ignore caller and Streamlit-secret model overrides.
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    clean_config = _strip_gemini_thinking_settings(generation_config or {})
-    transient_statuses = (408, 429, 500, 502, 503, 504)
-    transient_attempts = 0
-    thinking_retry_used = False
+def gemini_generate_content(contents, generation_config, timeout=(15, 180), status_callback=None, **_ignored):
+    payload = _strip_gemini_thinking_settings({"contents": contents, "generationConfig": generation_config or {}})
+    headers = {"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}
+    retryable = {500, 502, 503, 504}
+    primary_delays, backup_delays = (3, 6, 12, 20), (3, 6)
+    last_response = None
 
-    while True:
+    def notify(message):
+        if status_callback:
+            status_callback(message)
+
+    def request(model):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        return requests.post(url, headers=headers, json=payload, timeout=timeout)
+
+    def retry_after_seconds(response):
         try:
-            response = requests.post(
-                url,
-                headers={"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"},
-                json={"contents": contents, "generationConfig": clean_config},
-                timeout=timeout,
-            )
-        except requests.RequestException:
-            if transient_attempts < retries_per_model:
-                time.sleep(2 ** (transient_attempts + 1))
-                transient_attempts += 1
-                continue
-            raise
-
-        if response.ok:
-            return response, model
-
-        try:
-            error_text = response.json().get("error", {}).get("message", response.text)
+            message = response.json().get("error", {}).get("message", response.text)
         except Exception:
-            error_text = response.text
-        if response.status_code == 400 and "thinking" in str(error_text).casefold() and not thinking_retry_used:
-            clean_config = _strip_gemini_thinking_settings(clean_config)
-            thinking_retry_used = True
-            continue
+            message = response.text
+        match = re.search(r"retry\s+in\s+(\d+(?:\.\d+)?)\s*s", str(message), re.IGNORECASE)
+        return min(30, max(0, int(float(match.group(1)) + 0.999))) if match else 1
 
-        if response.status_code in transient_statuses and transient_attempts < retries_per_model:
-            retry_after = response.headers.get("Retry-After", "")
+    def run_model(model, delays):
+        nonlocal last_response
+        for attempt in range(len(delays) + 1):
             try:
-                delay = min(20, max(1, int(float(retry_after)))) if retry_after else 2 ** (transient_attempts + 1)
-            except (TypeError, ValueError):
-                delay = 2 ** (transient_attempts + 1)
-            time.sleep(delay)
-            transient_attempts += 1
-            continue
+                response = request(model)
+            except requests.RequestException:
+                if attempt < len(delays):
+                    delay = delays[attempt]
+                    notify(f"Gemini busy (network), {delay} sec lo malli try chesthunna... ({attempt + 1}/{len(delays)})")
+                    time.sleep(delay)
+                    continue
+                return None, "network"
+            last_response = response
+            if response.ok:
+                return response, "success"
+            if response.status_code in (400, 401, 403):
+                return response, "fatal"
+            if response.status_code == 429:
+                if attempt == 0:
+                    delay = retry_after_seconds(response)
+                    notify(f"Gemini limit (429), {delay} sec wait chesi okkasari retry chesthunna...")
+                    time.sleep(delay)
+                    try:
+                        retry_response = request(model)
+                    except requests.RequestException:
+                        return None, "rate_limit"
+                    last_response = retry_response
+                    return (retry_response, "success") if retry_response.ok else (retry_response, "rate_limit")
+                return response, "rate_limit"
+            if response.status_code not in retryable:
+                return response, "other"
+            if attempt < len(delays):
+                delay = delays[attempt]
+                notify(f"Gemini busy ({response.status_code}), {delay} sec lo malli try chesthunna... ({attempt + 1}/{len(delays)})")
+                time.sleep(delay)
+        return last_response, "exhausted"
 
-        return response, model
+    response, outcome = run_model(GEMINI_PRIMARY_MODEL, primary_delays)
+    if outcome == "success":
+        return response, GEMINI_PRIMARY_MODEL
+    if outcome in ("fatal", "rate_limit", "other"):
+        return response, GEMINI_PRIMARY_MODEL
+
+    notify("Backup model tho try chesthunna...")
+    backup_response, backup_outcome = run_model(GEMINI_BACKUP_MODEL, backup_delays)
+    if backup_outcome == "success":
+        return backup_response, GEMINI_BACKUP_MODEL
+    if backup_response is not None:
+        if backup_outcome == "exhausted":
+            try:
+                backup_response._gemini_server_busy = True
+            except Exception:
+                pass
+        return backup_response, GEMINI_BACKUP_MODEL
+    raise RuntimeError("Google server busy undi. 1–2 nimishalu aagi malli button nokku. Video malli upload avvadu.")
+
+
+def gemini_failure_message(response, model):
+    if getattr(response, "_gemini_server_busy", False):
+        return "Google server busy undi. 1–2 nimishalu aagi malli button nokku. Video malli upload avvadu."
+    try:
+        detail = response.json().get("error", {}).get("message", response.text)
+    except Exception:
+        detail = response.text
+    return f"Gemini API ({response.status_code}, {model}): {detail}"
 
 # Metadata validation helpers: keep YouTube limits and brand hashtags consistent.
 def _is_metadata_tag_character(ch):
@@ -847,9 +887,8 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                     }
                 },
                 timeout=(10, 35),
-                retries_per_model=0,
+                status_callback=lambda message: generation_status.warning(message),
             )
-            generation_status.success(f"SEO metadata తయారీ పూర్తయింది ({int(time.monotonic() - generation_started)}s).")
             if gen is None:
                 raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
             if not gen.ok:
@@ -1551,15 +1590,12 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                                 contents=[{"parts": [{"text": growth_prompt}]}],
                                 generation_config={"temperature": 0.35, "maxOutputTokens": 3000},
                                 timeout=(15, 180),
-                                retries_per_model=2,
+                                status_callback=lambda message: st.warning(message),
                             )
                             if not growth_response.ok:
-                                try:
-                                    growth_error = growth_response.json().get("error", {}).get("message", growth_response.text)
-                                except Exception:
-                                    growth_error = growth_response.text
-                                st.error(f"Gemini API ({growth_response.status_code}, {growth_model}): {growth_error}")
+                                st.error(gemini_failure_message(growth_response, growth_model))
                             else:
+                                st.caption(f"Model: {growth_model}")
                                 growth_result = growth_response.json()
                                 growth_text = "\n".join(
                                     part.get("text", "")
@@ -1696,15 +1732,12 @@ Return only the selected format with clean headings.
                         contents=request_body["contents"],
                         generation_config=request_body["generationConfig"],
                         timeout=(15, 180),
-                        retries_per_model=2,
+                        status_callback=lambda message: st.warning(message),
                     )
                     if not response.ok:
-                        try:
-                            detail = response.json().get("error", {}).get("message", response.text)
-                        except Exception:
-                            detail = response.text
-                        st.error(f"Gemini API ({response.status_code}, {studio_model}): {detail}")
+                        st.error(gemini_failure_message(response, studio_model))
                     else:
+                        st.caption(f"Model: {studio_model}")
                         payload = response.json()
                         candidates = payload.get("candidates", [])
                         finish_reasons = [candidate.get("finishReason") for candidate in candidates if isinstance(candidate, dict)]
@@ -1731,4 +1764,3 @@ Return only the selected format with clean headings.
                 st.error(f"Network error: {exc}")
 
 st.caption("Privacy: API keys, Supabase Secret Key and Google OAuth client credentials belong only in Streamlit deployment Secrets, never in GitHub. When Supabase credentials are configured, the YouTube OAuth token is encrypted before server-side storage in a table inaccessible to anon/authenticated users. The Supabase Secret Key is used only by this server-side app.")
-
