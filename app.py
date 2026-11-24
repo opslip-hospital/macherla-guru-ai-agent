@@ -91,6 +91,7 @@ def gemini_generate_content(
     generation_config,
     timeout=(15, 180),
     status_callback=None,
+    retry_timeouts=False,
 ):
     """Try the hardcoded primary with four 5xx retries, then backup with two retries."""
     import re as _re
@@ -120,11 +121,26 @@ def gemini_generate_content(
         if status_callback:
             status_callback(message)
 
-    # Primary: initial request plus four retries for the specified transient 5xx codes.
+    # Primary: initial request plus four retries for transient 5xx responses.
+    # Video metadata analysis may also retry read/connect timeouts when explicitly enabled.
     primary_delays = (3, 6, 12, 20)
+    last_timeout = None
     for retry_index in range(5):
         try:
             response = post(GEMINI_PRIMARY_MODEL)
+        except requests.Timeout as exc:
+            if not retry_timeouts:
+                raise
+            last_timeout = exc
+            if retry_index < len(primary_delays):
+                delay = primary_delays[retry_index]
+                notify(
+                    f"Gemini response ఆలస్యమైంది (timeout), {delay} sec lo malli try chesthunna... "
+                    f"({retry_index + 1}/4)"
+                )
+                time.sleep(delay)
+                continue
+            break
         except requests.RequestException:
             raise
         last_response = response
@@ -170,6 +186,22 @@ def gemini_generate_content(
     for retry_index in range(3):
         try:
             response = post(GEMINI_BACKUP_MODEL)
+        except requests.Timeout as exc:
+            if not retry_timeouts:
+                raise
+            last_timeout = exc
+            if retry_index < len(backup_delays):
+                delay = backup_delays[retry_index]
+                notify(
+                    f"Backup Gemini response timeout, {delay} sec lo malli try chesthunna... "
+                    f"({retry_index + 1}/2)"
+                )
+                time.sleep(delay)
+                continue
+            raise requests.Timeout(
+                "Gemini video analysis timed out on both models. "
+                "Saved video file will be reused; upload చేయాల్సిన అవసరం లేదు."
+            ) from exc
         except requests.RequestException:
             raise
         last_response = response
@@ -925,6 +957,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 },
                 timeout=(10, 35),
                 status_callback=lambda message: generation_status.warning(message),
+                retry_timeouts=True,
             )
             if gen is None:
                 raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
