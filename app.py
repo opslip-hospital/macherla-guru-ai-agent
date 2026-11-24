@@ -497,8 +497,7 @@ def persist_owner_credentials(creds):
     if not config:
         return False
     supabase_url, secret_key = config
-    encrypted = token_cipher().encrypt(creds.to_json().encode("utf-8")).decode("utf-8")
-    response = requests.post(
+    encrypted = token_cipher().encrypt(creds.to_json().encode("utf-8")).decode("utf-8")    response = requests.post(
         f"{supabase_url}/rest/v1/youtube_oauth_tokens",
         params={"on_conflict": "singleton"},
         headers={**supabase_headers(secret_key), "Prefer": "resolution=merge-duplicates,return=minimal"},
@@ -888,8 +887,6 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 timeout=(10, 35),
                 status_callback=lambda message: generation_status.warning(message),
             )
-            generation_status.success(f"SEO metadata తయారీ పూర్తయింది ({int(time.monotonic() - generation_started)}s).")
-            st.caption(f"Model: {used_text_model}")
             if gen is None:
                 raise RuntimeError("Gemini request ప్రారంభం కాలేదు. మళ్లీ ప్రయత్నించు.")
             if not gen.ok:
@@ -898,6 +895,8 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                 except Exception:
                     gemini_error = gen.text
                 raise RuntimeError(gemini_failure_message(gen, used_text_model))
+            generation_status.success(f"SEO metadata తయారీ పూర్తయింది ({int(time.monotonic() - generation_started)}s).")
+            st.caption(f"Model: {used_text_model}")
             gen_data = gen.json()
             if not isinstance(gen_data, dict):
                 raise RuntimeError("Gemini response format తప్పుగా వచ్చింది. మళ్లీ Generate చేయి.")
@@ -997,8 +996,7 @@ Caption language/script must match the video's spoken language. For Telugu, use 
             if thumbnail_source == "video_frame_fallback":
                 st.write("**వీడియోలోని frameతో చేసిన ఉచిత Thumbnail Preview:**")
             elif thumbnail_source == "gemini_generated":
-                st.write("**Gemini AI తయారు చేసిన Thumbnail Preview:**")
-            else:
+                st.write("**Gemini AI తయారు చేసిన Thumbnail Preview:**")            else:
                 st.write("**Thumbnail Preview:**")
             st.image(generated_thumb, use_container_width=True)
 
@@ -1497,7 +1495,6 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                         k5.metric("Avg viewed (%)", f"{recent_avp:.1f}%", f"{change_pct(recent_avp, previous_avp):+.1f}%" if change_pct(recent_avp, previous_avp) is not None else "No previous data")
                     else:
                         st.caption("ఇది views-only diagnostic. మిగతా metrics కోసం detailed Analytics report అందుబాటులోకి రావాలి.")
-
                     # Top-video report adds context, but includes all content types.
                     video_data = []
                     try:
@@ -1595,7 +1592,6 @@ Caption language/script must match the video's spoken language. For Telugu, use 
                                 st.error(gemini_failure_message(growth_response, growth_model))
                             else:
                                 st.caption(f"Model: {growth_model}")
-                            else:
                                 growth_result = growth_response.json()
                                 growth_text = "\n".join(
                                     part.get("text", "")
